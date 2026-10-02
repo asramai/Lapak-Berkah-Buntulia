@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import TopAppBar from './components/TopAppBar';
 import NavDrawer from './components/NavDrawer';
 import BottomNav from './components/BottomNav';
-import SummaryCards from './components/SummaryCards';
-import TransactionTable from './components/TransactionTable';
 import ErrorBoundary from './components/ErrorBoundary';
 import MitraDashboard from './pages/MitraDashboard';
 import KasirHP from './pages/KasirHP';
@@ -16,6 +14,7 @@ import Inventory from './pages/Inventory';
 import TransactionHistory from './pages/TransactionHistory';
 import StockManagement from './pages/StockManagement';
 import MitraSettlement from './pages/MitraSettlement';
+import FinancialReports from './pages/FinancialReports';
 
 const rolePageAccess = {
   admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement'],
@@ -31,41 +30,6 @@ const roleDefaultPage = {
 
 const SESSION_TIMEOUT = 30 * 60 * 1000;
 const WARNING_BEFORE = 60 * 1000;
-
-function FinancialReports() {
-  return (
-    <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display-lg text-display-lg text-on-surface">Laporan Laba & Profit</h1>
-          <p className="font-body-md text-body-md text-on-surface-variant mt-1">Laporan keuangan harian untuk Admin.</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex items-center bg-surface-container-highest rounded-lg p-1">
-            <button className="bg-surface text-on-surface px-4 py-2 rounded-md font-label-md text-label-md shadow-sm h-[48px]">Hari Ini</button>
-            <button className="text-on-surface-variant px-4 py-2 rounded-md font-label-md text-label-md hover:bg-surface-variant h-[48px]">Bulan Ini</button>
-            <button className="text-on-surface-variant px-4 py-2 rounded-md font-label-md text-label-md hover:bg-surface-variant h-[48px] flex items-center gap-2">
-              <span className="material-symbols-outlined text-[20px]" data-icon="calendar_today">calendar_today</span>
-              Pilih
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <button className="bg-surface text-primary border border-primary hover:bg-surface-variant transition-colors px-4 py-2 rounded-lg font-label-md text-label-md flex items-center gap-2 h-[48px]">
-              <span className="material-symbols-outlined text-[20px]" data-icon="description">description</span>
-              Export Excel
-            </button>
-            <button className="bg-secondary text-on-secondary hover:bg-secondary/90 transition-colors px-4 py-2 rounded-lg font-label-md text-label-md flex items-center gap-2 h-[48px]">
-              <span className="material-symbols-outlined text-[20px]" data-icon="picture_as_pdf">picture_as_pdf</span>
-              Export PDF
-            </button>
-          </div>
-        </div>
-      </div>
-      <SummaryCards />
-      <TransactionTable />
-    </div>
-  );
-}
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
