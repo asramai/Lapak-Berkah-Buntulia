@@ -12,6 +12,11 @@ function MitraSettlement({ user }) {
   const [selectedSettlement, setSelectedSettlement] = useState(null);
   const [toast, setToast] = useState(null);
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [selectedMitraId, setSelectedMitraId] = useState('semua');
+  const [statusFilter, setStatusFilter] = useState('semua');
+
   const [formData, setFormData] = useState({
     mitra_id: '',
     date: new Date().toISOString().split('T')[0],
@@ -135,6 +140,49 @@ function MitraSettlement({ user }) {
     const totalProfit = totalAmount - totalCost;
     return { totalAmount, totalCost, totalProfit };
   }, [formData.items]);
+
+  const filteredSettlements = useMemo(() => {
+    return (settlements || []).filter((settlement) => {
+      const rowDate = (settlement.date || '').slice(0, 10);
+      if (startDate && rowDate < startDate) return false;
+      if (endDate && rowDate > endDate) return false;
+      if (selectedMitraId !== 'semua' && settlement.mitra_id !== selectedMitraId) return false;
+      if (statusFilter === 'berhasil' && settlement.status === 'cancelled') return false;
+      if (statusFilter !== 'semua' && statusFilter !== 'berhasil' && settlement.status !== statusFilter) return false;
+      return true;
+    });
+  }, [settlements, startDate, endDate, selectedMitraId, statusFilter]);
+
+  const recap = useMemo(() => {
+    const activeRows = filteredSettlements.filter(s => s.status !== 'cancelled');
+    const totalJual = activeRows.reduce((sum, s) => sum + (Number(s.total_amount) || 0), 0);
+    const totalKeuntungan = activeRows.reduce((sum, s) => sum + (Number(s.total_profit) || 0), 0);
+    const totalModal = activeRows.reduce(
+      (sum, s) => sum + (s.items || []).reduce((inner, item) => inner + ((Number(item.cost_price) || 0) * (Number(item.quantity) || 0)), 0),
+      0
+    );
+    const totalQty = activeRows.reduce(
+      (sum, s) => sum + (s.items || []).reduce((inner, item) => inner + (Number(item.quantity) || 0), 0),
+      0
+    );
+    const totalInvoice = activeRows.length;
+    const marginPercent = totalJual > 0 ? (totalKeuntungan / totalJual) * 100 : 0;
+    return { totalJual, totalKeuntungan, totalModal, totalQty, totalInvoice, marginPercent };
+  }, [filteredSettlements]);
+
+  const filterOptions = useMemo(() => {
+    const idsWithInvoice = new Set((settlements || []).map(s => s.mitra_id));
+    return mitraList
+      .filter(mitra => idsWithInvoice.has(mitra.id))
+      .map(mitra => ({ id: mitra.id, name: mitra.full_name }));
+  }, [mitraList, settlements]);
+
+  const resetFilters = () => {
+    setStartDate('');
+    setEndDate('');
+    setSelectedMitraId('semua');
+    setStatusFilter('semua');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -591,11 +639,151 @@ function MitraSettlement({ user }) {
             </div>
           )}
 
+          {/* Dashboard Rekap */}
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-headline-sm text-headline-sm text-on-background">Dashboard Rekap</h3>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">Ringkasan penjualan dan keuntungan nota mitra</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-primary-fixed flex items-center justify-center text-on-primary-fixed">
+                    <span className="material-symbols-outlined">payments</span>
+                  </div>
+                  <span className="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
+                    {recap.totalInvoice} Invoice
+                  </span>
+                </div>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Jual</p>
+                <p className="font-display-lg text-display-lg text-on-background tracking-tight">
+                  Rp {recap.totalJual.toLocaleString('id-ID')}
+                </p>
+              </div>
+
+              <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-tertiary-fixed flex items-center justify-center text-on-tertiary-fixed">
+                    <span className="material-symbols-outlined">trending_up</span>
+                  </div>
+                  <span className="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
+                    {recap.marginPercent.toFixed(1)}%
+                  </span>
+                </div>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Keuntungan</p>
+                <p className="font-display-lg text-display-lg text-primary tracking-tight">
+                  Rp {recap.totalKeuntungan.toLocaleString('id-ID')}
+                </p>
+              </div>
+
+              <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-secondary-container flex items-center justify-center text-on-secondary-container">
+                    <span className="material-symbols-outlined">inventory_2</span>
+                  </div>
+                  <span className="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
+                    {recap.totalQty.toLocaleString('id-ID')} Qty
+                  </span>
+                </div>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Total Modal</p>
+                <p className="font-display-lg text-display-lg text-on-background tracking-tight">
+                  Rp {recap.totalModal.toLocaleString('id-ID')}
+                </p>
+              </div>
+
+              <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+                <div className="flex justify-between items-start mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-surface-container-high flex items-center justify-center text-on-surface-variant">
+                    <span className="material-symbols-outlined">percent</span>
+                  </div>
+                  <span className="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-high px-2 py-1 rounded-full">
+                    {filteredSettlements.length} Data
+                  </span>
+                </div>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Margin Keuntungan</p>
+                <p className="font-display-lg text-display-lg text-on-background tracking-tight">
+                  {recap.marginPercent.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* Filter Tanggal & Filter Mitra */}
+          <section className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-headline-sm text-headline-sm text-on-background">Filter</h3>
+              <button
+                onClick={resetFilters}
+                className="h-9 px-3 rounded-lg border border-outline text-on-surface-variant hover:bg-surface-container flex items-center gap-1.5 transition-colors font-label-md text-label-md"
+              >
+                <span className="material-symbols-outlined text-[18px]">filter_alt_off</span>
+                Reset
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="space-y-2">
+                <label className="block font-label-md text-label-md text-on-surface font-medium">Dari Tanggal</label>
+                <input
+                  type="date"
+                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                  value={startDate}
+                  max={endDate || undefined}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block font-label-md text-label-md text-on-surface font-medium">Sampai Tanggal</label>
+                <input
+                  type="date"
+                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                  value={endDate}
+                  min={startDate || undefined}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="block font-label-md text-label-md text-on-surface font-medium">Filter Mitra</label>
+                <select
+                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                  value={selectedMitraId}
+                  onChange={(e) => setSelectedMitraId(e.target.value)}
+                >
+                  <option value="semua">Semua Mitra</option>
+                  {filterOptions.map(option => (
+                    <option key={option.id} value={option.id}>{option.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="block font-label-md text-label-md text-on-surface font-medium">Filter Status</label>
+                <select
+                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="semua">Semua Status</option>
+                  <option value="berhasil">Tanpa Dibatalkan</option>
+                  <option value="pending">Menunggu</option>
+                  <option value="paid">Lunas</option>
+                  <option value="cancelled">Dibatalkan</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
           {/* Settlements List */}
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden">
-            <div className="p-4 md:p-6 border-b border-outline-variant/50">
-              <h3 className="font-headline-sm text-headline-sm text-on-background">Daftar Invoice</h3>
-              <p className="font-body-sm text-body-sm text-on-surface-variant">Riwayat nota penjualan ke mitra</p>
+            <div className="p-4 md:p-6 border-b border-outline-variant/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h3 className="font-headline-sm text-headline-sm text-on-background">Daftar Invoice</h3>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">Riwayat nota penjualan ke mitra</p>
+              </div>
+              <span className="font-label-md text-label-md text-on-surface-variant bg-surface-container-high px-3 py-1.5 rounded-full self-start sm:self-auto">
+                {filteredSettlements.length} dari {settlements.length} invoice
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -611,14 +799,14 @@ function MitraSettlement({ user }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/50 text-sm">
-                  {settlements.length === 0 ? (
+                  {filteredSettlements.length === 0 ? (
                     <tr>
                       <td colSpan="7" className="text-center py-8 text-on-surface-variant">
-                        Belum ada invoice.
+                        {settlements.length === 0 ? 'Belum ada invoice.' : 'Tidak ada invoice yang cocok dengan filter.'}
                       </td>
                     </tr>
                   ) : (
-                    settlements.map((settlement) => {
+                    filteredSettlements.map((settlement) => {
                       const badge = getStatusBadge(settlement.status);
                       return (
                         <tr key={settlement.id} className="hover:bg-surface-container-low/50 transition-colors">
@@ -669,6 +857,20 @@ function MitraSettlement({ user }) {
                     })
                   )}
                 </tbody>
+                {filteredSettlements.length > 0 && (
+                  <tfoot className="border-t-2 border-outline-variant bg-surface-container-low">
+                    <tr className="font-headline-sm text-headline-sm">
+                      <td className="py-3 px-4" colSpan="3">Rekap Total</td>
+                      <td className="py-3 px-4 text-right text-on-background">
+                        Rp {recap.totalJual.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-3 px-4 text-right text-primary">
+                        Rp {recap.totalKeuntungan.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-3 px-4" colSpan="2" />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
