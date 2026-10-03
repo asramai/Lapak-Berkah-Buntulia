@@ -123,14 +123,24 @@ export function ringkasanPembayaran(rows) {
     if (row.status !== 'Selesai') return;
 
     const bucket = row.paymentMethod === 'Tunai' ? tunai : qris;
-    // Baris laporan satu per ITEM, bukan per transaksi. Transaksi yang berisi
-    // tiga produk akan muncul sebagai tiga baris, jadi transaksi harus dihitung
-    // dari id unik supaya tidak terhitung berkali-kali.
-    if (row.transactionId && !sudahDihitung.has(row.transactionId)) {
-      sudahDihitung.add(row.transactionId);
+
+    // Baris laporan datang dalam dua bentuk dan keduanya dipakai aplikasi:
+    //   - profitReport menghasilkan satu baris per ITEM, kunci transaksi di
+    //     kolom transactionId, nominal di totalSales
+    //   - SalesRecap mengelompokkannya jadi satu baris per TRANSAKSI, kuncinya
+    //     di kolom id, nominal di total
+    // Karena itu keduanya harus diterima. Kalau hanya satu bentuk yang dibaca,
+    // ringkasan tampil nol padahal tabelnya berisi.
+    const kunci = row.transactionId || row.id;
+    const nominal = Number(row.totalSales ?? row.total) || 0;
+
+    // Penghitungan unik tetap perlu untuk bentuk per-item, karena satu
+    // transaksi berisi beberapa produk akan muncul sebagai beberapa baris.
+    if (kunci && !sudahDihitung.has(kunci)) {
+      sudahDihitung.add(kunci);
       bucket.transaksi += 1;
     }
-    bucket.nominal += Number(row.totalSales) || 0;
+    bucket.nominal += nominal;
   });
 
   const totalTransaksi = tunai.transaksi + qris.transaksi;
