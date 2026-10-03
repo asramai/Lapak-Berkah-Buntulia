@@ -254,14 +254,18 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Hapus invoice ini?')) return;
+  const handleDelete = async (id, nomor) => {
+    if (!window.confirm(
+      `Pindahkan invoice ${nomor || 'ini'} ke data terhapus?\n\n`
+      + 'Data tidak hilang permanen dan bisa dipulihkan dari menu Audit Log. '
+      + 'Riwayat pembayaran ke mitra tetap tercatat.'
+    )) return;
     try {
       await mitraSettlementService.delete(id);
-      showToast('Invoice berhasil dihapus!', 'success');
+      showToast('Invoice dipindahkan ke data terhapus', 'success');
       await loadData();
     } catch {
-      showToast('Gagal menghapus invoice', 'error');
+      showToast('Gagal memindahkan invoice', 'error');
     }
   };
 
@@ -880,9 +884,9 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                                 <span className="material-symbols-outlined text-sm">edit</span>
                               </button>
                               <button
-                                onClick={() => handleDelete(settlement.id)}
+                                onClick={() => handleDelete(settlement.id, settlement.invoice_number)}
                                 className="w-8 h-8 rounded-lg bg-error-container/30 hover:bg-error-container/50 text-error flex items-center justify-center transition-all"
-                                title="Hapus"
+                                title="Pindahkan ke data terhapus"
                                 aria-label="Hapus invoice"
                               >
                                 <span className="material-symbols-outlined text-sm">delete</span>

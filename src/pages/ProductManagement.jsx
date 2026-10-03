@@ -207,15 +207,19 @@ function ProductManagement() {
     setShowForm(true);
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus produk ini?')) return;
+  const handleDelete = async (id, nama = 'produk ini') => {
+    if (!window.confirm(
+      `Pindahkan "${nama}" ke data terhapus?\n\n`
+      + 'Data tidak hilang permanen dan bisa dipulihkan dari menu Audit Log. '
+      + 'Laporan dan riwayat transaksi lama tetap utuh.'
+    )) return;
     try {
       await productService.delete(id);
       setProducts(products.filter(p => p.id !== id));
       await loadProducts();
-      showToast('Produk berhasil dihapus!', 'success');
+      showToast('Produk dipindahkan ke data terhapus', 'success');
     } catch {
-      showToast('Gagal menghapus produk', 'error');
+      showToast('Gagal memindahkan produk', 'error');
     }
   };
 
@@ -754,9 +758,9 @@ function ProductManagement() {
                                   <span className="material-symbols-outlined text-sm">edit</span>
                                 </button>
                                 <button
-                                  onClick={() => handleDelete(product.id)}
+                                  onClick={() => handleDelete(product.id, product.nama_produk)}
                                   className="w-8 h-8 rounded-lg bg-error-container/30 hover:bg-error-container/50 text-error flex items-center justify-center transition-all"
-                                  title="Hapus"
+                                  title="Pindahkan ke data terhapus"
                                   aria-label="Hapus produk"
                                 >
                                   <span className="material-symbols-outlined text-sm">delete</span>

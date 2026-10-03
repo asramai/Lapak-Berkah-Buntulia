@@ -3,6 +3,7 @@ import TopAppBar from './components/TopAppBar';
 import NavDrawer from './components/NavDrawer';
 import BottomNav from './components/BottomNav';
 import ErrorBoundary from './components/ErrorBoundary';
+import { setAuditActor } from './lib/supabase';
 import MitraDashboard from './pages/MitraDashboard';
 import KasirHP from './pages/KasirHP';
 import { KasirDesktop, KasirDesktopCart } from './pages/KasirDesktop';
@@ -15,9 +16,10 @@ import TransactionHistory from './pages/TransactionHistory';
 import StockManagement from './pages/StockManagement';
 import MitraSettlement from './pages/MitraSettlement';
 import FinancialReports from './pages/FinancialReports';
+import AuditLog from './pages/AuditLog';
 
 const rolePageAccess = {
-  admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement'],
+  admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement', 'audit-log'],
   kasir: ['dashboard', 'pos-desktop', 'inventory', 'transaction-history', 'stock-management'],
   mitra: ['dashboard', 'mitra'],
 };
@@ -64,6 +66,13 @@ function App() {
     const authData = { isAuthenticated, role, user };
     localStorage.setItem('lapak-berkah-auth', JSON.stringify(authData));
   }, [isAuthenticated, role, user]);
+
+  // Identitas pelaku ikut di setiap request sebagai header x-actor, dibaca
+  // trigger audit di database. Cukup diatur di sini, tidak perlu diteruskan ke
+  // setiap pemanggilan service.
+  useEffect(() => {
+    setAuditActor(isAuthenticated ? user : null);
+  }, [isAuthenticated, user]);
 
   const handleLogin = (selectedRole, userData = null) => {
     setIsAuthenticated(true);
@@ -177,6 +186,7 @@ function App() {
             {page === 'mitra-settlement' && <MitraSettlement user={user} />}
             {page === 'pos' && <KasirHP onNavigate={navigateTo} />}
             {page === 'pos-desktop' && <KasirDesktop onNavigate={navigateTo} />}
+            {page === 'audit-log' && <AuditLog />}
           </ErrorBoundary>
         </main>
         {page === 'pos-desktop' && <KasirDesktopCart user={user} isPosDesktop={isPosDesktop} />}

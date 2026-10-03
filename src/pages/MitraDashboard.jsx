@@ -513,20 +513,24 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
     }
   };
 
-  const handleDeleteMitra = async (mitraId) => {
+  const handleDeleteMitra = async (mitraId, nama) => {
     const productsInMitra = products.filter((p) => p.mitraId === mitraId).length;
     if (productsInMitra > 0) {
       setToast({ message: `Tidak dapat menghapus! Ada ${productsInMitra} produk milik mitra ini.`, type: 'error' });
       return;
     }
-    if (!window.confirm('Apakah Anda yakin ingin menghapus mitra ini?')) return;
+    if (!window.confirm(
+      `Pindahkan mitra "${nama || 'ini'}" ke data terhapus?\n\n`
+      + 'Data tidak hilang permanen dan bisa dipulihkan dari menu Audit Log. '
+      + 'Riwayat transaksinya tetap utuh.'
+    )) return;
     try {
       await mitraService.delete(mitraId);
       setMitraList((prev) => prev.filter((m) => m.id !== mitraId));
       setAllMitra((prev) => prev.filter((m) => m.id !== mitraId));
-      setToast({ message: 'Mitra berhasil dihapus!', type: 'success' });
+      setToast({ message: 'Mitra dipindahkan ke data terhapus', type: 'success' });
     } catch {
-      setToast({ message: 'Gagal menghapus mitra', type: 'error' });
+      setToast({ message: 'Gagal memindahkan mitra', type: 'error' });
     }
   };
 
@@ -1037,10 +1041,10 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
                                        <span className="material-symbols-outlined text-[18px]">edit</span>
                                      </button>
                                      <button
-                                       onClick={() => handleDeleteMitra(mitra.id)}
-                                       className="h-8 w-8 rounded-lg bg-error/10 text-error hover:bg-error hover:text-on-error flex items-center justify-center transition-all"
-                                       title="Hapus"
-                                       aria-label="Hapus mitra"
+                                        onClick={() => handleDeleteMitra(mitra.id, mitra.full_name)}
+                                        className="h-8 w-8 rounded-lg bg-error/10 text-error hover:bg-error hover:text-on-error flex items-center justify-center transition-all"
+                                        title="Pindahkan ke data terhapus"
+                                        aria-label="Hapus mitra"
                                      >
                                        <span className="material-symbols-outlined text-[18px]">delete</span>
                                      </button>

@@ -48,7 +48,7 @@ export const userService = {
 };
 
 export const productService = {
-  async getAll(filters = {}, { limit, offset } = {}) {
+  async getAll(filters = {}, { limit, offset, includeDeleted = false } = {}) {
     let query = supabase
       .from('products')
       .select(`
@@ -58,6 +58,9 @@ export const productService = {
         type:type_id (name)
       `)
       .order('created_at', { ascending: false });
+
+    if (!includeDeleted) query = query.is('deleted_at', null);
+    if (filters.includeDeleted) query = query.not('deleted_at', 'is', null);
 
     if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
     if (filters.search) {
@@ -82,6 +85,8 @@ export const productService = {
         .from('products')
         .select('*', { count: 'exact', head: true });
 
+      if (!includeDeleted) countQuery = countQuery.is('deleted_at', null);
+      if (filters.includeDeleted) countQuery = countQuery.not('deleted_at', 'is', null);
       if (filters.categoryId) countQuery = countQuery.eq('category_id', filters.categoryId);
       if (filters.search) {
         countQuery = countQuery.or(`nama_produk.ilike.%${filters.search}%,sku.ilike.%${filters.search}%,barcode_id.ilike.%${filters.search}%`);
@@ -103,6 +108,7 @@ export const productService = {
         category:category_id (name),
         type:type_id (name)
       `)
+      .is('deleted_at', null)
       .gt('stock', 0)
       .lte('stock', threshold)
       .order('stock', { ascending: true });
@@ -120,6 +126,7 @@ export const productService = {
         category:category_id (name),
         type:type_id (name)
       `)
+      .is('deleted_at', null)
       .eq('stock', 0)
       .order('created_at', { ascending: false });
 
@@ -174,6 +181,10 @@ export const productService = {
     return data;
   },
 
+  // Sengaja tidak menyaring deleted_at. Fungsi ini mengecek stok untuk
+  // transaksi yang sudah masuk keranjang, termasuk keranjang yang disimpan
+  // (held) sebelum produk dihapus. Kalau produknya tidak ditemukan, stoknya
+  // dianggap 0 dan penjualan ditolak, bukan ERROR.
   async getStockByIds(ids) {
     const uniqueIds = [...new Set((ids || []).filter(Boolean))];
     if (uniqueIds.length === 0) return [];
@@ -187,10 +198,22 @@ export const productService = {
     return data || [];
   },
 
+  // Soft delete: baris ditandai, tidak dihapus. Baris ini masih dirujuk
+  // transaksi lama, jadi menghapusnya permanen akan merusak laporan.
   async delete(id) {
     const { error } = await supabase
       .from('products')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('products')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;
@@ -202,6 +225,7 @@ export const categoryService = {
     const { data, error } = await supabase
       .from('categories')
       .select('*')
+      .is('deleted_at', null)
       .order('name');
 
     if (error) throw error;
@@ -234,7 +258,17 @@ export const categoryService = {
   async delete(id) {
     const { error } = await supabase
       .from('categories')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('categories')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;
@@ -246,6 +280,7 @@ export const productTypeService = {
     const { data, error } = await supabase
       .from('product_types')
       .select('*')
+      .is('deleted_at', null)
       .order('name');
 
     if (error) throw error;
@@ -278,7 +313,17 @@ export const productTypeService = {
   async delete(id) {
     const { error } = await supabase
       .from('product_types')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('product_types')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;
@@ -286,11 +331,14 @@ export const productTypeService = {
 };
 
 export const mitraService = {
-  async getAll({ limit, offset, search } = {}) {
+  async getAll({ limit, offset, search, includeDeleted = false } = {}) {
     let query = supabase
       .from('mitra')
       .select('*')
       .order('full_name');
+
+    if (includeDeleted) query = query.not('deleted_at', 'is', null);
+    else query = query.is('deleted_at', null);
 
     if (search) {
       query = query.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -311,6 +359,9 @@ export const mitraService = {
       let countQuery = supabase
         .from('mitra')
         .select('*', { count: 'exact', head: true });
+
+      if (includeDeleted) countQuery = countQuery.not('deleted_at', 'is', null);
+      else countQuery = countQuery.is('deleted_at', null);
 
       if (search) {
         countQuery = countQuery.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`);
@@ -351,16 +402,29 @@ export const mitraService = {
       .from('mitra')
       .select('*')
       .eq('id', id)
+      .is('deleted_at', null)
       .single();
 
     if (error) throw error;
     return data;
   },
 
+  // Soft delete. Mitra masih dirujuk produk, transaksi, dan invoice, jadi
+  // menghapusnya permanen akan merusak riwayat.
   async delete(id) {
     const { error } = await supabase
       .from('mitra')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('mitra')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;
@@ -744,7 +808,8 @@ export const dashboardService = {
       supabase
         .from('mitra')
         .select('*', { count: 'exact', head: true })
-        .eq('status', 'Aktif'),
+        .eq('status', 'Aktif')
+        .is('deleted_at', null),
     ]);
 
     if (mitraCountResult.error) throw mitraCountResult.error;
@@ -782,6 +847,9 @@ export const mitraSettlementService = {
       `)
       .order('date', { ascending: false });
 
+    if (filters.includeDeleted) query = query.not('deleted_at', 'is', null);
+    else query = query.is('deleted_at', null);
+
     if (filters.mitraId) query = query.eq('mitra_id', filters.mitraId);
     if (filters.startDate) query = query.gte('date', filters.startDate);
     if (filters.endDate) query = query.lte('date', filters.endDate);
@@ -802,6 +870,7 @@ export const mitraSettlementService = {
         items:mitra_settlement_items (*)
       `)
       .eq('id', id)
+      .is('deleted_at', null)
       .single();
 
     if (error) throw error;
@@ -831,12 +900,58 @@ export const mitraSettlementService = {
     return data;
   },
 
+  // Soft delete. Invoice yang sudah dibayar ke mitra tidak boleh hilang
+  // permanen, jadi hanya ditandai dan bisa dipulihkan.
   async delete(id) {
     const { error } = await supabase
       .from('mitra_settlements')
-      .delete()
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('mitra_settlements')
+      .update({ deleted_at: null })
       .eq('id', id);
 
     if (error) throw error;
+  },
+};
+
+// Jejak audit. Ditulis trigger di database, jadi aplikasi hanya perlu
+// membaca. Hak UPDATE dan DELETE dicabut di SQL migration, jadi catatan
+// yang sudah ada tidak bisa dirapikan atau dihapus dari sisi aplikasi.
+export const auditLogService = {
+  async getAll({ limit = 100, tabel = null, aksi = null, entitasId = null } = {}) {
+    let query = supabase
+      .from('audit_log')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (tabel) query = query.eq('tabel', tabel);
+    if (aksi) query = query.eq('aksi', aksi);
+    if (entitasId) query = query.eq('entitas_id', entitasId);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return data || [];
+  },
+
+  async count({ tabel = null, aksi = null } = {}) {
+    let query = supabase
+      .from('audit_log')
+      .select('*', { count: 'exact', head: true });
+
+    if (tabel) query = query.eq('tabel', tabel);
+    if (aksi) query = query.eq('aksi', aksi);
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return count || 0;
   },
 };
