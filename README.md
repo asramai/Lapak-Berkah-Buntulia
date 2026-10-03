@@ -1,5 +1,7 @@
 # React + Vite
 
+> Workflow otomatis: setiap perubahan file di folder ini akan di-lint, di-build, di-commit, di-push ke GitHub, lalu di-deploy ke Vercel production secara otomatis oleh `scripts/auto-sync.mjs`.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
