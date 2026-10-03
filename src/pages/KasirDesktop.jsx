@@ -26,6 +26,10 @@ function KasirDesktop({ onNavigate }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
   const barcodeRef = useRef(null);
+  // Kalau kolom cost_price belum ada, penjualan tetap jalan tapi laba Owner
+  // tidak bisa dihitung tepat. Banner ini sengaja persisten, bukan toast,
+  // karena toast langsung tertimpa pesan "pembayaran berhasil".
+  const [peringatanSnapshot, setPeringatanSnapshot] = useState(null);
 
   const handleConnectPrinter = async () => {
     try {
@@ -118,6 +122,19 @@ function KasirDesktop({ onNavigate }) {
 
   return (
     <div className="flex-1 flex flex-col h-full bg-surface-container-lowest relative xl:pr-[380px]">
+      {peringatanSnapshot && (
+        <div className="flex items-start gap-3 px-4 py-3 bg-error-container text-on-error-container border-b border-error/30 shrink-0">
+          <span className="material-symbols-outlined text-lg">warning</span>
+          <span className="font-body-sm text-body-sm flex-1">{peringatanSnapshot}</span>
+          <button
+            onClick={() => setPeringatanSnapshot(null)}
+            className="material-symbols-outlined text-lg hover:opacity-70"
+            aria-label="Tutup peringatan"
+          >
+            close
+          </button>
+        </div>
+      )}
       {/* Header */}
       <header className="h-16 bg-surface border-b border-outline-variant flex items-center justify-between px-4 md:px-6 z-10 shrink-0 gap-4">
         <div className="flex items-center gap-3 flex-1">
@@ -490,7 +507,29 @@ function KasirDesktopCart({ user, isPosDesktop }) {
         subtotal: item.sellingPrice * item.qty,
       }));
 
-      await transactionItemService.createBatch(items);
+      // Kalau migration add-transaction-item-cost-price.sql belum dijalankan,
+      // kolom cost_price tidak ada dan insert ini gagal. Karena header transaksi
+      // sudah terlanjur tertulis, kegagalan tanpa penanganan menyisakan transaksi
+      // tanpa item. Jadi coba ulang tanpa snapshot, tetap izinkan penjualan
+      // terjadi, dan tampilkan banner.
+      let snapshotModalTercatat = true;
+      try {
+        await transactionItemService.createBatch(items);
+      } catch (itemErr) {
+        const pesan = itemErr?.message || '';
+        if (!/cost_price|42703|column .* does not exist/i.test(pesan)) throw itemErr;
+        snapshotModalTercatat = false;
+        const tanpaSnapshot = items.map(({ cost_price: _modal, ...sisa }) => sisa);
+        await transactionItemService.createBatch(tanpaSnapshot);
+      }
+
+      if (!snapshotModalTercatat) {
+        setPeringatanSnapshot(
+          'Kolom cost_price belum ada di database, jadi snapshot harga mitra tidak tersimpan dan '
+          + 'laba Owner pada penjualan ini belum bisa dihitung tepat. Jalankan '
+          + 'scripts/run-pending-migrations.sql di Supabase SQL Editor.'
+        );
+      }
 
       const stockUpdates = activeTransaction.items.map(async (item) => {
         await stockMovementService.create({
