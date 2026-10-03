@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { productService, transactionService, transactionItemService, stockMovementService, mitraService, heldTransactionService, paymentService } from '../lib/services';
+import { productService, transactionService, mitraService, heldTransactionService, paymentService } from '../lib/services';
 import { printReceipt } from '../lib/bluetoothPrinter';
 import { adapterUntuk } from '../lib/paymentGateway';
 
@@ -550,10 +550,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
           : {}),
       };
 
-      const createdTransaction = await transactionService.create(transactionData);
-
       const items = activeTransaction.items.map((item) => ({
-        transaction_id: createdTransaction.id,
         product_id: item.productId,
         quantity: item.qty,
         harga_satuan: item.sellingPrice,
@@ -563,46 +560,32 @@ function KasirDesktopCart({ user, isPosDesktop }) {
         subtotal: item.sellingPrice * item.qty,
       }));
 
-      // Kalau migration add-transaction-item-cost-price.sql belum dijalankan,
-      // kolom cost_price tidak ada dan insert ini gagal. Karena header transaksi
-      // sudah terlanjur tertulis, kegagalan tanpa penanganan menyisakan transaksi
-      // tanpa item. Jadi coba ulang tanpa snapshot, tetap izinkan penjualan
-      // terjadi, dan tampilkan banner.
-      let snapshotModalTercatat = true;
+      // Header, item, pergerakan stok, dan pengurangan stok disimpan dalam satu
+      // transaksi database. Kalau ada satu bagian yang gagal, tidak ada sama
+      // sekali yang tersisa, jadi tidak mungkin lagi ada transaksi menggantung
+      // tanpa item.
+      let transactionId;
       try {
-        await transactionItemService.createBatch(items);
-      } catch (itemErr) {
-        const pesan = itemErr?.message || '';
-        if (!/cost_price|42703|column .* does not exist/i.test(pesan)) throw itemErr;
-        snapshotModalTercatat = false;
-        const tanpaSnapshot = items.map(({ cost_price: _modal, ...sisa }) => sisa);
-        await transactionItemService.createBatch(tanpaSnapshot);
-      }
-
-      if (!snapshotModalTercatat) {
-        setPeringatanSnapshot(
-          'Kolom cost_price belum ada di database, jadi snapshot harga mitra tidak tersimpan dan '
-          + 'laba Owner pada penjualan ini belum bisa dihitung tepat. Jalankan '
-          + 'scripts/run-pending-migrations.sql di Supabase SQL Editor.'
-        );
-      }
-
-      const stockUpdates = activeTransaction.items.map(async (item) => {
-        await stockMovementService.create({
-          type: 'out',
-          product_id: item.productId,
-          quantity: item.qty,
-          note: `Transaksi #${createdTransaction.id.toString().slice(-2)}`,
-          mitra_id: item.mitraId || null,
-        });
-
-        const success = await productService.decrementStock(item.productId, item.qty);
-        if (!success) {
-          throw new Error(`Stok tidak cukup untuk ${item.name}`);
+        transactionId = await transactionService.createPosTransaction(transactionData, items);
+      } catch (err) {
+        const pesan = err?.message || '';
+        // migration add-transaction-item-cost-price.sql belum dijalankan, kolom
+        // cost_price tidak ada dan fungsi ini gagal. Penjualan tetap diizinkan,
+        // tapi laba Owner pada penjualan ini belum bisa dihitung tepat.
+        if (/cost_price|42703|column .* does not exist/i.test(pesan)) {
+          transactionId = await transactionService.createPosTransaction(
+            transactionData,
+            items.map(({ cost_price: _modal, ...sisa }) => sisa),
+          );
+          setPeringatanSnapshot(
+            'Kolom cost_price belum ada di database, jadi snapshot harga mitra tidak tersimpan dan '
+            + 'laba Owner pada penjualan ini belum bisa dihitung tepat. Jalankan '
+            + 'scripts/run-pending-migrations.sql di Supabase SQL Editor.',
+          );
+        } else {
+          throw err;
         }
-      });
-
-      await Promise.all(stockUpdates);
+      }
 
       if (mitraId) {
         try {
@@ -622,13 +605,12 @@ function KasirDesktopCart({ user, isPosDesktop }) {
 
       // QRIS tidak bisa langsung diselesaikan di sini: pembayarannya belum
       // masuk. Transaksinya dibiarkan Pending, keranjang tidak dikosongkan, dan
-      // struk belum dicetak. Struk baru boleh keluar setelah webhook gateway
-      // mengonfirmasi pembayaran.
+      // struk belum dicetak. Struk baru boleh keluar setelah kasir memastikan
+      // pembayaran masuk.
       if (paymentMethod === 'QRIS') {
-        const pesanan = await adapter.mulai({ total, transactionId: createdTransaction.id });
+        const pesanan = await adapter.mulai({ total, transactionId });
         setQrisPending({
-          transactionId: createdTransaction.id,
-          total,
+          transactionId,
           mulai: Date.now(),
           manual: pesanan.manual === true,
           dikonfirmasi: '',
@@ -638,7 +620,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
       }
 
       // Tunai: selesaikan lewat database, change dihitung di sana.
-      const hasil = await paymentService.completeTunai(createdTransaction.id, paid);
+      const hasil = await paymentService.completeTunai(transactionId, paid);
       await finalisasiLunas({
         total,
         paid: Number(paid),

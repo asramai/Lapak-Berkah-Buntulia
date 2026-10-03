@@ -432,6 +432,21 @@ export const mitraService = {
 };
 
 export const transactionService = {
+  // Satu panggilan untuk seluruh penyimpanan penjualan. Dulu ini dilakukan
+  // dalam empat langkah terpisah dari peramban, sehingga langkah yang gagal
+  // meninggalkan transaksi menggantung tanpa item. Sekarang database
+  // mengaturnya dalam satu transaksi, dan stok produk dikunci dengan FOR UPDATE
+  // supaya dua kasir tidak bisa sama-sama menjual produk terakhir.
+  async createPosTransaction(header, items) {
+    const { data, error } = await supabase.rpc('create_pos_transaction', {
+      p_header: header,
+      p_items: items,
+    });
+
+    if (error) throw error;
+    return data;
+  },
+
   async create(transaction) {
     const { data, error } = await supabase
       .from('transactions')
