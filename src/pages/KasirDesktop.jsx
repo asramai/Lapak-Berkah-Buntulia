@@ -365,8 +365,17 @@ function KasirDesktopCart({ user, isPosDesktop }) {
   }, [qrisPending]);
 
   // Tutup pesanan QRIS yang sudah lewat batasnya.
+  //
+  // Sisa waktu dihitung sendiri di sini, bukan memakai state sisaDetikQris.
+  // Waktu qrisPending baru diisi, state itu masih bernilai 0 dan efek hitung
+  // mundur baru menjadwalkan pembaruan. Kalau efek ini membaca state itu, dia
+  // akan melihat 0 pada render yang sama dan langsung membatalkan pesanan yang
+  // baru dibuat.
   useEffect(() => {
-    if (!qrisPending || sisaDetikQris > 0) return;
+    if (!qrisPending) return;
+    const sisa = Math.round((qrisPending.mulai + QRIS_EXPIRY_MS - Date.now()) / 1000);
+    if (sisa > 0) return;
+
     paymentService.batalkan(qrisPending.transactionId, 'Kedaluwarsa tanpa pembayaran')
       .then(() => {
         setQrisPending(null);
