@@ -84,7 +84,6 @@ GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT, TEXT) TO anon, authenticated;
 DO $$
 DECLARE
   t TEXT;
-  policy_wrote TEXT;
 BEGIN
   FOREACH t IN ARRAY ARRAY['products', 'mitra', 'categories', 'product_types'] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
@@ -187,7 +186,7 @@ CREATE POLICY "audit_log_baca" ON audit_log
 -- (8) Cabut hak tabel dari anon dan authenticated
 -- ============================================================
 -- RLS menyaring baris, tapi hak akses tabel tetap perlu dicabut supaya
--- PostgREST tidak bisa menyentuh tabel yang tidak punya policy. Tables lain yang
+-- PostgREST tidak bisa menyentuh tabel yang tidak punya policy. Tabel lain yang
 -- dibuat di luar daftar di atas otomatis tidak bisa diakses.
 
 REVOKE UPDATE, DELETE ON users FROM anon, authenticated;
