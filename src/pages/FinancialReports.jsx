@@ -132,7 +132,7 @@ function FinancialReports() {
   const byMitra = useMemo(() => summarizeByMitra(scopedRows), [scopedRows]);
   const byProduct = useMemo(() => summarizeByProduct(scopedRows), [scopedRows]);
   const byDate = useMemo(() => summarizeByDate(scopedRows), [scopedRows]);
-  const problems = useMemo(() => verifyConsistency(summary), [summary]);
+  const problems = useMemo(() => verifyConsistency(summary, scopedRows), [summary, scopedRows]);
 
   const pagedRows = useMemo(() => {
     const start = (currentPage - 1) * ITEMS_PER_PAGE;

@@ -6,6 +6,7 @@ import Pagination from '../components/Pagination';
 
 function TransactionHistory({ user }) {
   const [history, setHistory] = useState([]);
+  const [rawTransactions, setRawTransactions] = useState([]);
   const [returnRows, setReturnRows] = useState([]);
   const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
@@ -63,6 +64,7 @@ function TransactionHistory({ user }) {
       });
 
       setHistory(mapped);
+      setRawTransactions(data || []);
       setReturnRows(returnData || []);
       setProducts(productData || []);
     } catch (err) {
@@ -91,8 +93,12 @@ function TransactionHistory({ user }) {
   // Penting: baris tabel HARUS memakai angka yang sama dengan kartu, supaya
   // jumlah baris selalu sama dengan total di atas.
   const scopedProfitRows = useMemo(() => {
+    // WAJIB memakai data mentah dari database, bukan `history` yang sudah
+    // dimapping. Modul kalkulasi membaca `created_at` dan `items`; bentuk
+    // mapped menyimpan `date` dan `rawItems`, sehingga semua baris akan
+    // terbuang dan kolom报告显示 nol.
     const rows = buildProfitRows({
-      transactions: history,
+      transactions: rawTransactions,
       returns: returnRows,
       products,
       startDate: '0000-01-01',
@@ -105,7 +111,7 @@ function TransactionHistory({ user }) {
     return scoped.filter(
       (r) => r.mitraName.toLowerCase().includes(keyword) || (r.productName || '').toLowerCase().includes(keyword)
     );
-  }, [history, returnRows, products, filteredHistory, searchQuery]);
+  }, [rawTransactions, returnRows, products, filteredHistory, searchQuery]);
 
   const omzetRows = useMemo(() => summarizeProfit(scopedProfitRows), [scopedProfitRows]);
 

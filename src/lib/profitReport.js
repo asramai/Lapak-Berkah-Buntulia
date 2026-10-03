@@ -92,14 +92,26 @@ export function buildProfitRows({ transactions, returns, products, startDate, en
   const costIndex = buildCostIndex(products);
   const returnIndex = buildReturnIndex(returns);
   const rows = [];
+  const transaksiTidakTerhitung = [];
 
   (transactions || []).forEach((tx) => {
     if (activeOnly && tx.status !== ACTIVE_TRANSACTION_STATUS) return;
 
-    const date = tx.created_at ? getLocalDate(tx.created_at) : '';
+    // Sumber tanggal:(created_at dari query, atau `date` kalau halaman
+    // sudah memapping datanya sendiri. Tanpa fallback ini, baris yang
+    // tanggalnya kosong akan dibuang diam-diam dan laporan menampilkan nol.
+    const rawDate = tx.created_at || tx.date || '';
+    const date = rawDate ? getLocalDate(rawDate) : '';
+
+    const items = tx.items || tx.rawItems;
+    if (!items || !date) {
+      transaksiTidakTerhitung.push({ id: tx.id, punyaTanggal: Boolean(date), punyaItem: Boolean(items?.length) });
+      return;
+    }
+
     if (!inRange(date, startDate, endDate)) return;
 
-    (tx.items || []).forEach((item) => {
+    items.forEach((item) => {
       const soldQty = toNumber(item.quantity);
       const returnedQty = returnIndex.get(item.id) || 0;
       // Kembalikan lebih dari yang dibeli tidak mungkin; penjaga defensif.
@@ -140,7 +152,14 @@ export function buildProfitRows({ transactions, returns, products, startDate, en
     });
   });
 
-  return rows;
+  // Diagnostik: transaksi aktif yang tidak bisa dihitung. Kalau angka ini
+  // lebih dari 0, berarti bentuk data yang dikirim tidak sesuai (misalnya
+  // field tanggal atau item tidak terbaca) sehingga laporan akan terlihat nol
+  // tanpa ada peringatan. Halaman mengeceknya lewat verifyConsistency.
+  return Object.assign(rows, {
+    transaksiTidakTerhitung,
+    ringkasanGagal: transaksiTidakTerhitung.length,
+  });
 }
 
 /**
@@ -305,7 +324,7 @@ export function summarizeByDate(rows) {
  * Pemeriksa konsistensi. Kalau selisih !== 0 berarti ada bug perhitungan.
  * Halaman laporan bisa memakai ini untuk menampilkan peringatan.
  */
-export function verifyConsistency(summary) {
+export function verifyConsistency(summary, rows = null) {
   const problems = [];
   if (Math.abs(summary.selisih) > 0.01) {
     problems.push(`Total Penjualan tidak sama dengan (Mitra + Owner), selisih ${summary.selisih}`);
@@ -317,6 +336,13 @@ export function verifyConsistency(summary) {
     problems.push(
       `${summary.barisModalTidakDiketahui} baris tanpa harga mitra (${summary.produkModalTidakDiketahui.join(', ')}). `
       + 'Laba Owner pada baris itu terhitung 100% dan belum bisa dipercaya.'
+    );
+  }
+  if (rows && rows.ringkasanGagal > 0) {
+    const contoh = rows.transaksiTidakTerhitung.slice(0, 3).map((r) => r.id).join(', ');
+    problems.push(
+      `${rows.ringkasanGagal} transaksi tidak bisa dihitung karena data tidak lengkap `
+      + `(contoh: ${contoh}). Laporan ini belum utuh.`
     );
   }
   return problems;
