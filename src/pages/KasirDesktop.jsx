@@ -540,11 +540,21 @@ function KasirDesktopCart({ user, isPosDesktop }) {
 
     setCheckingOut(true);
     try {
-      const mitraId = activeTransaction.items.find((item) => item.mitraId)?.mitraId || null;
       // status, paid, dan change sengaja TIDAK dikirim. Trigger di database
-      // memaksa setiap transaksi lahir sebagai 'Pending' dengan paid 0, jadi
-      // tidak ada cara membuat transaksi yang langsung berstatus lunas dari
-      // peramban. Penyelesaiannya nanti lewat paymentService.
+      // memaksa setiap transaksi lahir sebagai 'Pending', jadi tidak ada cara
+      // membuat transaksi yang langsung berstatus lunas dari peramban.
+      // Penyelesaiannya nanti lewat paymentService.
+      // transactions.mitra_id hanya boleh diisi kalau seluruh item di keranjang
+      // milik mitra yang sama. Kalau keranjang campur, diisi null saja: lebih
+      // jujur daripada mencatat satu mitra yang sebenarnya tidak mewakili semua
+      // item. Atribusi per mitra tetap dihitung dari mitra produknya masing-masing
+      // di profitReport, jadi laporan tidak kehilangan data.
+      const mitraIdsUnik = [...new Set(
+        activeTransaction.items.map((item) => item.mitraId).filter(Boolean),
+      )];
+      const mitraId = mitraIdsUnik.length === 1 ? mitraIdsUnik[0] : null;
+      const keranjangCampur = mitraIdsUnik.length > 1;
+
       const transactionData = {
         user_id: user?.id || null,
         mitra_id: mitraId,
@@ -634,6 +644,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
         paid: Number(paid),
         change: Number(hasil?.change || 0),
         paymentMethod,
+        keranjangCampur,
       });
     } catch (error) {
       setToast({ message: 'Gagal memproses pembayaran: ' + (error?.message || ''), type: 'error' });
@@ -645,7 +656,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
   // Dipanggil setelah transaksi benar-benar lunas, baik Tunai maupun QRIS yang
   // sudah dikonfirmasi webhook. Semua penandaan "sudah selesai" dikumpulkan di
   // sini supaya tidak ada jalur yang bisa mencetak struk tanpa pembayaran.
-  const finalisasiLunas = async ({ total, paid, change, paymentMethod }) => {
+  const finalisasiLunas = async ({ total, paid, change, paymentMethod, keranjangCampur = false }) => {
     const source = transactions.find((t) => t.id === activeTransactionId);
     const completed = {
       ...(source || activeTransaction),
@@ -666,6 +677,15 @@ function KasirDesktopCart({ user, isPosDesktop }) {
     setTransactions((prev) => prev.filter((t) => t.id !== activeTransactionId));
     const remaining = transactions.filter((t) => t.id !== activeTransactionId);
     setActiveTransactionId(remaining[0]?.id || null);
+
+    // Keranjang yang campur beberapa mitra tidak bisa dipecah jadi satu invoice.
+    // Kasir perlu tahu supaya saat membuat invoice, produk tiap mitra dipisah.
+    if (keranjangCampur) {
+      setToast({
+        message: 'Keranjang berisi produk dari beberapa mitra. Saat membuat invoice, pisahkan per mitra.',
+        type: 'error',
+      });
+    }
 
     printReceipt(completed).then((result) => {
       if (result && result.method === 'bluetooth') {

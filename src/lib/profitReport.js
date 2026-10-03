@@ -134,8 +134,14 @@ export function buildProfitRows({ transactions, returns, products, startDate, en
         createdAt: tx.created_at || '',
         status: tx.status || '-',
         paymentMethod: tx.metode_pembayaran || '-',
-        mitraId: tx.mitra_id || item.product?.mitra_id || null,
-        mitraName: tx.mitra?.full_name || item.product?.mitra?.full_name || '-',
+// Mitra yang jadi acuan adalah mitra PRODUK, bukan mitra di header
+      // transaksi. Header hanya bisa menyimpan satu mitra untuk satu keranjang,
+      // padahal keranjang bisa berisi produk dari beberapa mitra, sehingga
+      // atribusi per mitranya jadi salah. Total keseluruhan tetap sama karena
+      // penjumlahannya; yang berubah hanya pembagian per mitra, dan itu justru
+      // yang benar untuk menentukan siapa yang berhak menerima uang.
+      mitraId: item.product?.mitra_id || tx.mitra_id || null,
+      mitraName: item.product?.mitra?.full_name || tx.mitra?.full_name || '-',
         productId: item.product_id,
         productName: item.product?.nama_produk || '-',
         soldQty,
