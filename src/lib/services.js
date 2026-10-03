@@ -922,6 +922,42 @@ export const mitraSettlementService = {
   },
 };
 
+// Penyelesaian pembayaran. Semua status melewati fungsi di database, bukan
+// update langsung, karena status 'Selesai' tidak boleh bisa disetel dari
+// browser. Lihat scripts/secure-payment-and-qris.sql.
+export const paymentService = {
+  // Dipanggil kasir setelah uang tunai benar-benar diterima.
+  // Change dihitung database supaya tidak bisa dimanipulasi dari peramban.
+  async completeTunai(transactionId, paid) {
+    const { data, error } = await supabase.rpc('complete_cash_payment', {
+      p_transaction_id: transactionId,
+      p_paid: Number(paid),
+    });
+
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
+  async batalkan(transactionId, reason = null) {
+    const { data, error } = await supabase.rpc('cancel_pending_transaction', {
+      p_transaction_id: transactionId,
+      p_reason: reason,
+    });
+
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
+  // Dipanggil saat halaman kasir dibuka. Transaksi QRIS yang pembayarannya
+  // tidak pernah datang akan dibatalkan dan stoknya dikembalikan, tanpa
+  // perlu cron di server.
+  async bersihkanKedaluwarsa() {
+    const { data, error } = await supabase.rpc('release_expired_payments');
+    if (error) throw error;
+    return data || 0;
+  },
+};
+
 // Jejak audit. Ditulis trigger di database, jadi aplikasi hanya perlu
 // membaca. Hak UPDATE dan DELETE dicabut di SQL migration, jadi catatan
 // yang sudah ada tidak bisa dirapikan atau dihapus dari sisi aplikasi.

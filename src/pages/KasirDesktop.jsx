@@ -1,6 +1,15 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { productService, transactionService, transactionItemService, stockMovementService, mitraService, heldTransactionService } from '../lib/services';
+import { productService, transactionService, transactionItemService, stockMovementService, mitraService, heldTransactionService, paymentService } from '../lib/services';
 import { printReceipt } from '../lib/bluetoothPrinter';
+import { adapterUntuk } from '../lib/paymentGateway';
+
+// Batas menunggu pembayaran QRIS. Setelah lewat, pesanan dibatalkan dan stoknya
+// dikembalikan supaya barang tidak tertahan karena pelanggan tidak membayar.
+const QRIS_EXPIRY_MS = 15 * 60 * 1000;
+
+// Transfer bank manual dibuang. Alasannya tidak bisa diverifikasi otomatis,
+// jadi tetap membuka jalan untuk mencatat pembayaran yang tidak pernah terjadi.
+const METODE_PEMBAYARAN = ['Tunai', 'QRIS'];
 
 function createEmptyTransaction(id) {
   return {
@@ -321,6 +330,10 @@ function KasirDesktopCart({ user, isPosDesktop }) {
   const [toast, setToast] = useState(null);
   const [_completedTransactions, setCompletedTransactions] = useState([]);
   const [checkingOut, setCheckingOut] = useState(false);
+  // Pesanan QRIS yang pembayarannya belum masuk. Selama isinya ada, keranjang
+  // tidak dikosongkan dan struk tidak dicetak.
+  const [qrisPending, setQrisPending] = useState(null);
+  const [sisaDetikQris, setSisaDetikQris] = useState(0);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -328,6 +341,40 @@ function KasirDesktopCart({ user, isPosDesktop }) {
   };
 
   const activeTransaction = transactions.find((t) => t.id === activeTransactionId) || transactions[0];
+
+  // Pesanan QRIS yang lewat batasnya dibatalkan dan stoknya dikembalikan.
+  // Dijalankan saat halaman kasir dibuka, jadi tidak butuh cron di server.
+  useEffect(() => {
+    paymentService.bersihkanKedaluwarsa().catch(() => {});
+  }, []);
+
+  // Hitung mundur pesanan QRIS yang sedang menunggu.
+  useEffect(() => {
+    if (!qrisPending) {
+      setSisaDetikQris(0);
+      return undefined;
+    }
+    const tick = () => {
+      const sisa = Math.max(0, Math.round((qrisPending.mulai + QRIS_EXPIRY_MS - Date.now()) / 1000));
+      setSisaDetikQris(sisa);
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [qrisPending]);
+
+  // Tutup pesanan QRIS yang sudah lewat batasnya.
+  useEffect(() => {
+    if (!qrisPending || sisaDetikQris > 0) return;
+    paymentService.batalkan(qrisPending.transactionId, 'Kedaluwarsa tanpa pembayaran')
+      .then(async () => {
+        setQrisPending(null);
+        setToast({ message: 'Pesanan QRIS kedaluwarsa, stok dikembalikan', type: 'error' });
+        window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
+        await loadProducts();
+      })
+      .catch((err) => setToast({ message: 'Gagal membatalkan pesanan: ' + (err?.message || ''), type: 'error' }));
+  }, [qrisPending, sisaDetikQris]);
 
   useEffect(() => {
     const loadHeldTransactions = async () => {
@@ -475,6 +522,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
     if (checkingOut) return;
     const total = activeTransaction.items.reduce((sum, item) => sum + item.sellingPrice * item.qty, 0);
     const paid = Number(paymentAmount);
+    const adapter = adapterUntuk(paymentMethod);
     if (!paymentMethod || total <= 0) return;
     if (paymentMethod === 'Tunai' && (isNaN(paid) || paid < total)) {
       setToast({ message: 'Jumlah pembayaran kurang', type: 'error' });
@@ -484,14 +532,21 @@ function KasirDesktopCart({ user, isPosDesktop }) {
     setCheckingOut(true);
     try {
       const mitraId = activeTransaction.items.find((item) => item.mitraId)?.mitraId || null;
+      // status, paid, dan change sengaja TIDAK dikirim. Trigger di database
+      // memaksa setiap transaksi lahir sebagai 'Pending' dengan paid 0, jadi
+      // tidak ada cara membuat transaksi yang langsung berstatus lunas dari
+      // peramban. Penyelesaiannya nanti lewat paymentService.
       const transactionData = {
         user_id: user?.id || null,
         mitra_id: mitraId,
         total,
-        paid: paymentMethod === 'Tunai' ? paid : total,
-        change: paymentMethod === 'Tunai' ? Math.max(0, paid - total) : 0,
         metode_pembayaran: paymentMethod,
-        status: 'Selesai',
+        // QRIS punya batas waktu. Lewat dari itu pesanan dibatalkan dan stoknya
+        // dikembalikan, supaya barang tidak tertahan selamanya karena pelanggan
+        // tidak pernah membayar.
+        ...(paymentMethod === 'QRIS'
+          ? { payment_expires_at: new Date(Date.now() + QRIS_EXPIRY_MS).toISOString() }
+          : {}),
       };
 
       const createdTransaction = await transactionService.create(transactionData);
@@ -562,56 +617,75 @@ function KasirDesktopCart({ user, isPosDesktop }) {
         }
       }
 
-      const updatedProducts = await productService.getAll();
-      const mappedUpdatedProducts = updatedProducts.map((p) => ({
-        id: p.id,
-        name: p.nama_produk,
-        sku: p.sku,
-        category: p.category ? { name: p.category.name } : null,
-        type: p.type ? { name: p.type.name } : null,
-        mitra: p.mitra ? { full_name: p.mitra.full_name } : null,
-        mitraId: p.mitra_id,
-        mitraPrice: p.mitra_price,
-        sellingPrice: p.selling_price,
-        stock: p.stock,
-        unit: p.unit,
-        photo: p.photo,
-        barcodeId: p.barcode_id,
-        description: p.description,
-      }));
-      window.dispatchEvent(new CustomEvent('kasir:stock-updated', { detail: { products: mappedUpdatedProducts } }));
+      window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
 
-      const completed = {
-        ...activeTransaction,
-        total,
-        paid: paymentMethod === 'Tunai' ? paid : total,
-        change: paymentMethod === 'Tunai' ? Math.max(0, paid - total) : 0,
-        paymentMethod,
-        completedAt: new Date().toLocaleString('id-ID'),
-      };
-      setCompletedTransactions((prev) => [completed, ...prev]);
-      if (activeTransaction.heldDbId) {
-        heldTransactionService.delete(activeTransaction.heldDbId).catch(() => {});
+      // QRIS tidak bisa langsung diselesaikan di sini: pembayarannya belum
+      // masuk. Transaksinya dibiarkan Pending, keranjang tidak dikosongkan, dan
+      // struk belum dicetak. Struk baru boleh keluar setelah webhook gateway
+      // mengonfirmasi pembayaran.
+      if (paymentMethod === 'QRIS') {
+        const pesanan = await adapter.mulai({ total, transactionId: createdTransaction.id });
+        setQrisPending({
+          transactionId: createdTransaction.id,
+          total,
+          mulai: Date.now(),
+          gatewayTerpasang: pesanan.gatewayTerpasang !== false,
+          qrPayload: pesanan.qrPayload || null,
+          pesan: pesanan.pesan || null,
+        });
+        setToast({ message: 'Pesanan QRIS dibuat, menunggu pembayaran', type: 'success' });
+        return;
       }
-      setToast({ message: `Pembayaran ${paymentMethod} berhasil`, type: 'success' });
-      setPaymentAmount('');
-      setTransactions((prev) => prev.filter((t) => t.id !== activeTransactionId));
-      const remaining = transactions.filter((t) => t.id !== activeTransactionId);
-      setActiveTransactionId(remaining[0]?.id || null);
-      printReceipt(completed).then((result) => {
-        if (result && result.method === 'bluetooth') {
-          setToast({ message: 'Struk dikirim ke printer', type: 'success' });
-        } else if (result && result.error) {
-          setToast({ message: 'Gagal print Bluetooth: ' + result.error + '. Gunakan print browser.', type: 'error' });
-        }
-      }).catch(() => {
-        setToast({ message: 'Gagal print struk', type: 'error' });
+
+      // Tunai: selesaikan lewat database, change dihitung di sana.
+      const hasil = await paymentService.completeTunai(createdTransaction.id, paid);
+      await finalisasiLunas({
+        total,
+        paid: Number(paid),
+        change: Number(hasil?.change || 0),
+        paymentMethod,
       });
     } catch (error) {
       setToast({ message: 'Gagal memproses pembayaran: ' + (error?.message || ''), type: 'error' });
     } finally {
       setCheckingOut(false);
     }
+  };
+
+  // Dipanggil setelah transaksi benar-benar lunas, baik Tunai maupun QRIS yang
+  // sudah dikonfirmasi webhook. Semua penandaan "sudah selesai" dikumpulkan di
+  // sini supaya tidak ada jalur yang bisa mencetak struk tanpa pembayaran.
+  const finalisasiLunas = async ({ total, paid, change, paymentMethod }) => {
+    const source = transactions.find((t) => t.id === activeTransactionId);
+    const completed = {
+      ...(source || activeTransaction),
+      total,
+      paid,
+      change,
+      paymentMethod,
+      completedAt: new Date().toLocaleString('id-ID'),
+    };
+
+    setCompletedTransactions((prev) => [completed, ...prev]);
+    if (activeTransaction.heldDbId) {
+      heldTransactionService.delete(activeTransaction.heldDbId).catch(() => {});
+    }
+    setToast({ message: `Pembayaran ${paymentMethod} berhasil`, type: 'success' });
+    setPaymentAmount('');
+    setQrisPending(null);
+    setTransactions((prev) => prev.filter((t) => t.id !== activeTransactionId));
+    const remaining = transactions.filter((t) => t.id !== activeTransactionId);
+    setActiveTransactionId(remaining[0]?.id || null);
+
+    printReceipt(completed).then((result) => {
+      if (result && result.method === 'bluetooth') {
+        setToast({ message: 'Struk dikirim ke printer', type: 'success' });
+      } else if (result && result.error) {
+        setToast({ message: 'Gagal print Bluetooth: ' + result.error + '. Gunakan print browser.', type: 'error' });
+      }
+    }).catch(() => {
+      setToast({ message: 'Gagal print struk', type: 'error' });
+    });
   };
 
   const subtotal = activeTransaction.items.reduce((sum, item) => sum + item.sellingPrice * item.qty, 0);
@@ -760,14 +834,88 @@ function KasirDesktopCart({ user, isPosDesktop }) {
             <span className="font-display-lg text-display-lg text-primary">Rp {total.toLocaleString('id-ID')}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={holdTransaction} className="h-11 rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">
+            <button onClick={holdTransaction} disabled={Boolean(qrisPending)} className="h-11 rounded-xl bg-surface-container-lowest border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors disabled:opacity-50">
               Tahan
             </button>
-            <button onClick={() => setPaymentMethod('Tunai')} className={`h-11 rounded-xl border font-label-md text-label-md transition-colors ${paymentMethod === 'Tunai' ? 'bg-primary text-on-primary border-primary' : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface-container'}`}>
-              Tunai
-            </button>
+            {METODE_PEMBAYARAN.map((metode) => (
+              <button
+                key={metode}
+                onClick={() => setPaymentMethod(metode)}
+                disabled={Boolean(qrisPending)}
+                className={`h-11 rounded-xl border font-label-md text-label-md transition-colors disabled:opacity-50 ${
+                  paymentMethod === metode
+                    ? 'bg-primary text-on-primary border-primary'
+                    : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface-container'
+                }`}
+              >
+                {metode}
+              </button>
+            ))}
           </div>
-          {paymentMethod === 'Tunai' && (
+          {qrisPending && (
+            <div className="space-y-3 rounded-2xl bg-surface-container p-4">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">hourglass_top</span>
+                <span className="font-label-lg text-label-lg text-on-surface">Menunggu pembayaran QRIS</span>
+              </div>
+
+              {qrisPending.gatewayTerpasang ? (
+                qrisPending.qrPayload ? (
+                  <div className="flex flex-col items-center gap-3">
+                    {qrisPending.qrPayload}
+                    <p className="font-body-sm text-body-sm text-on-surface-variant text-center">
+                      Minta pelanggan memindai QR ini dari aplikasi e-wallet atau mobile banking-nya.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="font-body-sm text-body-sm text-on-surface-variant text-center py-6">
+                    Menunggu kode QR dari payment gateway...
+                  </p>
+                )
+              ) : (
+                <div className="flex items-start gap-2 rounded-xl bg-error-container text-on-error-container p-3">
+                  <span className="material-symbols-outlined text-lg">warning</span>
+                  <span className="font-body-sm text-body-sm">
+                    {qrisPending.pesan || 'QRIS belum terhubung ke payment gateway.'}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+                <span>Total tagihan</span>
+                <span className="font-numeric-data text-numeric-data text-on-surface">
+                  Rp {Number(qrisPending.total).toLocaleString('id-ID')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+                <span>Batas pembayaran</span>
+                <span className="font-numeric-data text-numeric-data text-on-surface">
+                  {Math.floor(sisaDetikQris / 60)}:{String(sisaDetikQris % 60).padStart(2, '0')}
+                </span>
+              </div>
+              <p className="font-body-xs text-body-xs text-on-surface-variant">
+                Transaksi baru berstatus Selesai dan struk boleh keluar setelah payment gateway
+                mengonfirmasi pembayaran. Kalau dibatalkan, stok otomatis dikembalikan.
+              </p>
+              <button
+                onClick={() => {
+                  paymentService.batalkan(qrisPending.transactionId, 'Dibatalkan kasir')
+                    .then(async () => {
+                      setQrisPending(null);
+                      setToast({ message: 'Pesanan dibatalkan, stok dikembalikan', type: 'success' });
+                      window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
+                      await loadProducts();
+                    })
+                    .catch((err) => setToast({ message: 'Gagal membatalkan: ' + (err?.message || ''), type: 'error' }));
+                }}
+                className="w-full h-10 rounded-xl border border-outline text-on-surface font-label-md text-label-md hover:bg-surface-container"
+              >
+                Batalkan Pesanan
+              </button>
+            </div>
+          )}
+
+          {paymentMethod === 'Tunai' && !qrisPending && (
             <div className="space-y-2">
               <label className="block font-label-md text-label-md text-on-surface">Jumlah Bayar</label>
               <input

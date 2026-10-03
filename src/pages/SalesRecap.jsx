@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { transactionService, productService, returnService, mitraService } from '../lib/services';
 import { buildProfitRows, summarizeProfit, summarizeByMitra } from '../lib/profitReport';
+import { ringkasanPembayaran } from '../lib/paymentGateway';
 import { downloadSpreadsheet, openPrintableReport } from '../lib/exportReport';
 
 function SalesRecap() {
@@ -102,6 +103,7 @@ const summary = useMemo(() => {
 
   const totalSales = summary.totalPenjualan;
   const totalQty = summary.totalQty;
+  const pembayaran = useMemo(() => ringkasanPembayaran(filteredTransactions), [filteredTransactions]);
 
   const handleExportExcel = () => {
     downloadSpreadsheet({
@@ -152,12 +154,21 @@ const summary = useMemo(() => {
       subtitle: `Periode: ${rangeLabel}`,
       sections: [
         {
-          heading: 'Pembagian Keuntungan',
+heading: 'Pembagian Keuntungan',
           note: 'Total Penjualan = Untuk Mitra + Untuk Owner',
           cards: [
-            { label: 'Total Penjualan', value: summary.totalPenjualan, caption: `${summary.totalTransaksi} transaksi` },
-            { label: 'Untuk Mitra', value: summary.untukMitra, caption: `${summary.porsiMitraPercent.toFixed(1)}% dari penjualan` },
-            { label: 'Untuk Owner', value: summary.untukOwner, hero: true, caption: `Margin ${summary.marginPercent.toFixed(1)}%` },
+            { label: 'Total Penjualan', value: summary.totalPenjualan, money: true },
+            { label: 'Untuk Mitra', value: summary.untukMitra, money: true },
+            { label: 'Untuk Owner', value: summary.untukOwner, money: true },
+          ],
+        },
+        {
+          heading: 'Tunai vs Non-Tunai',
+          note: 'Hanya transaksi berstatus Selesai. QRIS yang belum dibayar dan transaksi dibatalkan tidak dihitung.',
+          cards: [
+            { label: 'Tunai', value: pembayaran.tunai.transaksi, money: false, caption: `Rp ${pembayaran.tunai.nominal.toLocaleString('id-ID')}` },
+            { label: 'Non-Tunai (QRIS)', value: pembayaran.nonTunai.transaksi, money: false, caption: `Rp ${pembayaran.nonTunai.nominal.toLocaleString('id-ID')}` },
+            { label: 'Porsi Non-Tunai', value: `${pembayaran.persenNonTunai.toFixed(1)}%`, money: false, caption: `dari ${pembayaran.total.transaksi} transaksi` },
           ],
         },
         {
@@ -302,7 +313,52 @@ const summary = useMemo(() => {
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">Rp {filteredTransactions.length > 0 ? Math.round(totalSales / filteredTransactions.length).toLocaleString('id-ID') : 0}</p>
               </div>
             </div>
-          </div>
+</div>
+
+          {/* Pemecahan Tunai vs non-Tunai. Dis terang owner karena selisih
+              kas di kasir hampir selalu datang dari pembayaran non-tunai yang
+              dicatat tanpa benar-benar dibayar. */}
+          <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="font-label-lg text-label-lg text-on-surface">Tunai vs Non-Tunai</p>
+                <p className="font-label-sm text-label-sm text-on-surface-variant mt-0.5">
+                  Hanya transaksi berstatus Selesai yang dihitung. Yang masih QRIS atau dibatalkan tidak masuk.
+                </p>
+              </div>
+              <span className="material-symbols-outlined text-on-surface-variant">account_balance_wallet</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-xl bg-surface-container p-4">
+                <p className="font-label-sm text-label-sm text-on-surface-variant">Tunai</p>
+                <p className="font-headline-md text-headline-md text-on-background font-numeric-data text-numeric-data">
+                  {pembayaran.tunai.transaksi}
+                </p>
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
+                  transaksi · Rp {pembayaran.tunai.nominal.toLocaleString('id-ID')}
+                </p>
+              </div>
+              <div className="rounded-xl bg-surface-container p-4">
+                <p className="font-label-sm text-label-sm text-on-surface-variant">Non-Tunai (QRIS)</p>
+                <p className="font-headline-md text-headline-md text-on-background font-numeric-data text-numeric-data">
+                  {pembayaran.nonTunai.transaksi}
+                </p>
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
+                  transaksi · Rp {pembayaran.nonTunai.nominal.toLocaleString('id-ID')}
+                </p>
+              </div>
+              <div className="rounded-xl bg-surface-container p-4">
+                <p className="font-label-sm text-label-sm text-on-surface-variant">Porsi Non-Tunai</p>
+                <p className="font-headline-md text-headline-md text-primary font-numeric-data text-numeric-data">
+                  {pembayaran.persenNonTunai.toFixed(1)}%
+                </p>
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
+                  dari {pembayaran.total.transaksi} transaksi selesai
+                </p>
+              </div>
+            </div>
+</div>
 
           {/* Pembagian Mitra / Owner - angka ini sama persis dengan Laporan Pembagian Keuntungan */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
