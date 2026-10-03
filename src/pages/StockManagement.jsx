@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
 import {
   productService,
   stockMovementService,
@@ -144,13 +143,13 @@ function StockManagement() {
         throw new Error('Stok tidak cukup untuk dikurangi');
       }
     } else {
-      const { data: currentProduct } = await supabase
-        .from('products')
-        .select('stock')
-        .eq('id', productId)
-        .single();
-      const updatedStock = Math.max(0, (currentProduct?.stock || 0) + quantity);
-      await productService.update(productId, { stock: updatedStock });
+      // Pakai RPC atomik, bukan baca-lalu-tulis. Kalau stok dibaca dulu lalu
+      // ditulis balik, dua penambahan stok yang hampir bersamaan bisa sama-sama
+      // membaca angka yang sama, dan salah satu penambahannya hilang. RPC
+      // decrement_product_stock dan increment_product_stock melakukan
+      // UPDATE ... SET stock = stock + qty di dalam database, jadi tidak ada
+      // celah untuk saling menimpa.
+      await productService.incrementStock(productId, quantity);
     }
   };
 

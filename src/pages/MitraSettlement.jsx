@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { mitraSettlementService, mitraService, productService, transactionService, returnService } from '../lib/services';
 import { buildProfitRows, summarizeProfit, getLocalDate } from '../lib/profitReport';
+import { hitungRekonsiliasiMitra } from '../lib/mitraReconciliation';
 
 function MitraSettlement({ user }) {
   const [settlements, setSettlements] = useState([]);
@@ -153,6 +154,16 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
     const totalProfit = totalAmount - totalCost;
     return { totalAmount, totalCost, totalProfit };
   }, [formData.items]);
+
+  // Rekonsiliasi kewajiban ke mitra: penjualan dikurangi yang sudah di-invoice.
+  // Sengaja tidak ikut mengikuti filter tanggal dan mitra di atas, supaya Owner
+  // selalu melihat posisi outstanding keseluruhan.
+  const rekonsiliasi = useMemo(() => hitungRekonsiliasiMitra({
+    transactions: allTransactions,
+    returns: allReturns,
+    products,
+    settlements,
+  }), [allTransactions, allReturns, products, settlements]);
 
   const filteredSettlements = useMemo(() => {
     return (settlements || []).filter((settlement) => {
@@ -699,9 +710,12 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                     {recap.totalInvoice} Invoice
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Penjualan</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Penjualan yang Sudah Di-invoice</p>
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">
                   Rp {recap.totalJual.toLocaleString('id-ID')}
+                </p>
+                <p className="font-label-sm text-label-sm text-on-surface-variant mt-1">
+                  Tidak sama dengan Laporan Penjualan. Angka ini hanya penjualan yang sudah ditagihkan ke mitra.
                 </p>
               </div>
 
@@ -714,7 +728,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                     {recap.marginPercent.toFixed(1)}%
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Untuk Owner (Selisih)</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Untung Owner pada Invoice Terbit</p>
                 <p className="font-display-lg text-display-lg text-primary tracking-tight">
                   Rp {recap.totalKeuntungan.toLocaleString('id-ID')}
                 </p>
@@ -729,7 +743,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                     {recap.totalQty.toLocaleString('id-ID')} Qty
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Untuk Mitra (Harga Mitra)</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Untuk Mitra pada Invoice Terbit</p>
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">
                   Rp {recap.totalModal.toLocaleString('id-ID')}
                 </p>
@@ -749,6 +763,85 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   {recap.marginPercent.toFixed(1)}%
                 </p>
               </div>
+            </div>
+
+            {/* Rekonsiliasi kewajiban ke mitra. Ini yang menghubungkan angka
+                penjualan dengan angka yang sudah ditagihkan ke mitra, supaya
+                Owner tahu berapa yang sudah keluar dan berapa yang belum. */}
+            <div className="mt-4 rounded-xl border border-outline-variant bg-surface-container-low p-4">
+              <div className="flex items-start gap-2 mb-3">
+                <span className="material-symbols-outlined text-on-surface-variant">account_balance_wallet</span>
+                <div>
+                  <p className="font-headline-sm text-headline-sm text-on-background">Posisi Kewajiban ke Mitra</p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    Dihitung dari penjualan yang sudah tercatat, dikurangi yang sudah jadi invoice. Tidak ikut
+                    terpengaruh filter di bawah supaya Owner selalu melihat posisi keseluruhan.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="rounded-lg bg-surface-container p-3">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">Harus Dibayar ke Mitra</p>
+                  <p className="font-headline-sm text-headline-sm text-on-surface font-numeric-data text-numeric-data">
+                    Rp {rekonsiliasi.total.liability.toLocaleString('id-ID')}
+                  </p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">dari seluruh penjualan</p>
+                </div>
+                <div className="rounded-lg bg-surface-container p-3">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">Sudah Di-invoice</p>
+                  <p className="font-headline-sm text-headline-sm text-on-surface font-numeric-data text-numeric-data">
+                    Rp {rekonsiliasi.total.diInvoice.toLocaleString('id-ID')}
+                  </p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">sudah ditagihkan</p>
+                </div>
+                <div className="rounded-lg bg-surface-container p-3">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">Sudah Dibayar Mitra</p>
+                  <p className="font-headline-sm text-headline-sm text-tertiary-container font-numeric-data text-numeric-data">
+                    Rp {rekonsiliasi.total.sudahDibayar.toLocaleString('id-ID')}
+                  </p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">sudah diterima mitra</p>
+                </div>
+                <div className="rounded-lg bg-surface-container p-3">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">Belum Di-tagih</p>
+                  <p className="font-headline-sm text-headline-sm text-primary font-numeric-data text-numeric-data">
+                    Rp {rekonsiliasi.total.belumDitagih.toLocaleString('id-ID')}
+                  </p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">penjualan belum jadi invoice</p>
+                </div>
+              </div>
+
+              {rekonsiliasi.total.belumDibayar > 0.5 && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-error-container text-on-error-container p-3">
+                  <span className="material-symbols-outlined">warning</span>
+                  <span className="font-body-sm text-body-sm">
+                    Masih ada invoice yang belum dibayar ke mitra: Rp{' '}
+                    {rekonsiliasi.total.belumDibayar.toLocaleString('id-ID')}.
+                  </span>
+                </div>
+              )}
+
+              {rekonsiliasi.masalah.mitraLebihDitagih.length > 0 && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg bg-error-container text-on-error-container p-3">
+                  <span className="material-symbols-outlined">report</span>
+                  <div className="font-body-sm text-body-sm">
+                    <p className="mb-1">
+                      {rekonsiliasi.masalah.mitraLebihDitagih.length} mitra punya invoice yang lebih besar dari
+                      penjualan yang tercatat. Ini perlu dicek manual, karena berarti invoice dibuat dari
+                      penjualan yang belum masuk ke kasir.
+                    </p>
+                    <ul className="list-disc pl-4">
+                      {rekonsiliasi.masalah.mitraLebihDitagih.map((m) => (
+                        <li key={m.mitraId}>
+                          {m.namaMitra}: invoice Rp {m.diInvoice.toLocaleString('id-ID')}, penjualan
+                          tercatat Rp {m.liability.toLocaleString('id-ID')} (selisih Rp{' '}
+                          {Math.abs(m.belumDitagih).toLocaleString('id-ID')})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
