@@ -126,14 +126,17 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
     const updatedItems = [...formData.items];
     if (field === 'product_id') {
       const product = products.find(p => p.id === value);
-      const soldQty = soldQuantities[value] || 0;
+      // Pakai sisa yang belum di-invoice, bukan total penjualan. Kalau memakai
+      // total, nilai yang terisi otomatis bisa langsung melewati batas dan
+      // invoice ditolak padahal kasir tidak salah apa-apa.
+      const sisa = batasQty[value];
       updatedItems[index] = {
         ...updatedItems[index],
         product_id: value,
         product_name: product?.nama_produk || '',
         selling_price: product?.selling_price || 0,
         cost_price: product?.mitra_price || 0,
-        quantity: soldQty > 0 ? soldQty : 1,
+        quantity: sisa > 0 ? sisa : 1,
       };
     } else {
       updatedItems[index] = { ...updatedItems[index], [field]: value };
@@ -208,11 +211,89 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
     setStatusFilter('semua');
   };
 
-  const handleSubmit = async (e) => {
+  // Batas qty memakai SELURUH penjualan, bukan hanya penjualan pada tanggal
+    // invoice. Kalau batasnya ikut tanggal, mengisi invoice dengan tanggal yang
+    // kebetulan sepi akan membuat semua produk terlihat tidak boleh di-invoice,
+    // dan sebaliknya.
+    const terjualSemua = useMemo(() => {
+      const quantities = {};
+      buildProfitRows({
+        transactions: allTransactions,
+        returns: allReturns,
+        products,
+        startDate: '0000-01-01',
+        endDate: '9999-12-31',
+      }).forEach((row) => {
+        if (!row.productId) return;
+        quantities[row.productId] = (quantities[row.productId] || 0) + row.netQty;
+      });
+      return quantities;
+    }, [allTransactions, allReturns, products]);
+
+    const invoiceLain = useMemo(
+      () => settlements.filter((s) => !s.deleted_at && s.status !== 'cancelled' && s.id !== editingSettlement?.id),
+      [settlements, editingSettlement],
+    );
+
+    // qty yang boleh di-invoice untuk satu produk: hasil penjualan dikurangi
+    // yang sudah pernah di-invoice di invoice lain.
+    //
+    // Dulu tidak ada batas sama sekali, hanya min="1" di input. Invoice bisa
+    // diisi melebihi penjualan, dan itulah yang menyebabkan invoice Adel
+    // Rp 478.000 lebih besar dari kewajibannya.
+    //
+    // Sale hari ini    : 20
+    // Sudah di-invoice : 12 (invoice bulan lalu)
+    // Boleh sekarang   : 8
+    //
+    // Invoice yang sedang diedit dikecualikan, supaya tidak mengurangi dirinya
+    // sendiri dan selalu dianggap melebihi batas begitu dibuka untuk diedit.
+    // Nilai dibiarkan negatif kalau invoice yang ada sudah melebihi penjualan,
+    // karena dibatasi jadi 0 akan membuat form tidak bisa diisi tanpa
+    // penjelasan.
+    const batasQty = useMemo(() => {
+      const batas = {};
+      Object.entries(terjualSemua).forEach(([productId, qty]) => {
+        const sudah = invoiceLain
+          .flatMap((s) => (Array.isArray(s.items) ? s.items : []))
+          .filter((i) => String(i.product_id) === String(productId))
+          .reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
+        batas[productId] = qty - sudah;
+      });
+      return batas;
+    }, [terjualSemua, invoiceLain]);
+
+    const handleSubmit = async (e) => {
     e.preventDefault();
     const validItems = (formData.items || []).filter(item => item.product_id && item.quantity > 0);
     if (!formData.mitra_id || validItems.length === 0) {
       showToast('Pilih mitra dan minimal satu produk', 'error');
+      return;
+    }
+
+// Validasi terakhir sebelum ke database. Ini satu-satunya tempat invoice
+    // diperiksa, karena tidak ada validasi di sisi server.
+    //
+    // Produk yang tidak punya penjualan sama sekali tidak muncul di
+    // terjualSemua, jadi batasnya undefined. Kalau dibiarkan, produk seperti
+    // itu jadi bebas di-invoice tanpa batas, jadi diasumsikan 0 supaya ditolak.
+    const lebih = validItems.filter((item) => {
+      const batas = batasQty[item.product_id] ?? 0;
+      return item.quantity > batas;
+    });
+    if (lebih.length > 0) {
+      const rincian = lebih
+        .map((item) => {
+          const batas = batasQty[item.product_id] ?? 0;
+          const alasan = batas < 0
+            ? 'sudah melebihi penjualan dari invoice yang ada'
+            : batas === 0
+              ? 'tidak punya penjualan yang belum di-invoice'
+              : `maksimal ${batas} dari penjualan yang belum di-invoice`;
+          return `${item.product_name || 'produk'}: ${item.quantity} (${alasan})`;
+        })
+        .join(', ');
+      showToast('Jumlah melebihi penjualan yang tercatat. ' + rincian, 'error');
       return;
     }
 
@@ -608,15 +689,43 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                           </select>
                         </div>
                         <div className="md:col-span-2 space-y-2">
-                          <label className="block font-label-sm text-label-sm text-on-surface-variant">Jumlah</label>
+                          <div className="flex items-baseline justify-between gap-2">
+                            <label className="block font-label-sm text-label-sm text-on-surface-variant">Jumlah</label>
+                            {batasQty[item.product_id] !== undefined && (
+                              <span
+                                className={`font-label-sm text-label-sm ${
+                                  item.quantity > batasQty[item.product_id] ? 'text-error' : 'text-on-surface-variant'
+                                }`}
+                              >
+                                {batasQty[item.product_id] < 0
+                                  ? `kelebihan ${Math.abs(batasQty[item.product_id])}`
+                                  : `maksimal ${batasQty[item.product_id]}`}
+                              </span>
+                            )}
+                          </div>
                           <input
                             type="number"
-                            className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                            className={`w-full h-10 px-3 rounded-lg border bg-surface-container-low focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md ${
+                              item.quantity > batasQty[item.product_id]
+                                ? 'border-error focus:border-error'
+                                : 'border-outline focus:border-primary'
+                            }`}
                             value={item.quantity || ''}
                             onChange={(e) => updateItem(index, 'quantity', Number(e.target.value))}
                             min="1"
                             required
                           />
+                          {batasQty[item.product_id] !== undefined && batasQty[item.product_id] < 0 && (
+                            <p className="font-body-sm text-body-sm text-error">
+                              Invoice untuk produk ini sudah melebihi penjualan. Perbaiki invoice yang sudah ada
+                              dulu sebelum membuat yang baru.
+                            </p>
+                          )}
+                          {batasQty[item.product_id] >= 0 && item.quantity > batasQty[item.product_id] && (
+                            <p className="font-body-sm text-body-sm text-error">
+                              Melebihi penjualan yang belum di-invoice ({batasQty[item.product_id]})
+                            </p>
+                          )}
                         </div>
                         <div className="md:col-span-2 space-y-2">
                           <label className="block font-label-sm text-label-sm text-on-surface-variant">Harga Jual</label>
