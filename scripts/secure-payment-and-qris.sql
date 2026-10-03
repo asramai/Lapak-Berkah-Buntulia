@@ -221,7 +221,11 @@ BEGIN
     SELECT product_id, quantity FROM transaction_items WHERE transaction_id = p_transaction_id
   LOOP
     IF v_item.product_id IS NOT NULL THEN
-      UPDATE products SET stock = stock + v_item.quantity WHERE id = v_item.product_id;
+      -- id ditulis lengkap dengan nama tabel. Fungsi ini punya variabel output
+      -- bernama "id" (dari RETURNS TABLE(id UUID, ...)), jadi "WHERE id" saja
+      -- akan ambigu antara products.id dan variabel itu, dan PostgreSQL
+      -- menolak dengan "column reference id is ambiguous".
+      UPDATE products SET stock = stock + v_item.quantity WHERE products.id = v_item.product_id;
       v_total_qty := v_total_qty + v_item.quantity;
 
       INSERT INTO stock_movements (product_id, type, quantity, note, mitra_id)
