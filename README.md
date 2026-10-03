@@ -10,6 +10,12 @@ Perintah yang tersedia:
 | `npm run autosync:once` | Jalankan satu siklus sinkronisasi lalu keluar |
 | `node scripts/auto-sync.mjs --no-deploy` |Watcher tanpa deploy ke Vercel |
 
+Target push otomatis adalah `origin` (`asramai/Lapak-Berkah-Buntulia`). Remote `star` (`lapakberkahbuntulia-star/Lapak-Berkah-Buntulia`) masih ada sebagai remote baca, karena akun `asramai` belum punya izin tulis ke sana. Ganti target bila perlu:
+
+```
+$env:AUTOSYNC_REMOTE="star"; npm run autosync
+```
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:
