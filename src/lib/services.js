@@ -35,15 +35,19 @@ export const authService = {
 };
 
 export const userService = {
+  // Sengaja tanpa .select(). Tabel users tidak punya policy SELECT supaya hash
+  // password tidak bisa dibaca dari peramban. PostgREST menjalankan
+  // INSERT ... RETURNING kalau .select() dipakai, dan RETURNING ikut disaring
+  // policy SELECT, jadi INSERT akan gagal dengan "new row violates row-level
+  // security policy" padahal INSERT-nya sendiri sah. Tidak ada yang butuh data
+  // kembalinya: pemanggil hanya ingin tahu berhasil atau tidak.
   async create(user) {
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('users')
-      .insert([user])
-      .select()
-      .single();
+      .insert([user]);
 
     if (error) throw error;
-    return data;
+    return true;
   },
 };
 
