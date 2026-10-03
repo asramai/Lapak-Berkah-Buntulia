@@ -5,6 +5,7 @@ import {
   pendingStockValidationService,
 } from '../lib/services';
 import Pagination from '../components/Pagination';
+import { ALASAN_STOK_KELUAR, hintAlasan, labelAlasan, ringkasanAlasan } from '../lib/stockReasons';
 
 function StockManagement() {
   const [productsList, setProductsList] = useState([]);
@@ -18,7 +19,7 @@ function StockManagement() {
   const [valStartDate, setValStartDate] = useState('');
   const [valEndDate, setValEndDate] = useState('');
   const [valMitra, setValMitra] = useState('Semua');
-  const [formData, setFormData] = useState({ type: 'in', productId: '', quantity: '', note: '' });
+  const [formData, setFormData] = useState({ type: 'in', productId: '', quantity: '', note: '', reason: '' });
   const [toast, setToast] = useState(null);
   const [movementPage, setMovementPage] = useState(1);
   const [validationPage, setValidationPage] = useState(1);
@@ -63,6 +64,7 @@ function StockManagement() {
           quantity: m.quantity,
           date: m.date || (m.created_at ? m.created_at.split('T')[0] : ''),
           note: m.note,
+          reason: m.reason,
           mitraName: m.mitra?.full_name,
         })),
       );
@@ -106,6 +108,7 @@ function StockManagement() {
   }, [filteredMovements, movementPage, movementsPerPage]);
 
   const totalMovements = filteredMovements.length;
+  const alasanRingkas = useMemo(() => ringkasanAlasan(stockMovements), [stockMovements]);
 
   const filteredPendingValidations = useMemo(() => {
     return pendingValidations.filter((v) => {
@@ -160,8 +163,9 @@ function StockManagement() {
         // mitra menarik barang yang belum terjual. Productnya sudah punya
         // mitra, jadi biarkan fungsi yang mengisinya dari produk.
         mitraId: formData.type === 'in' && product.mitraId ? String(product.mitraId) : null,
+        reason: formData.type === 'out' ? formData.reason : null,
       });
-      setFormData({ type: 'in', productId: '', quantity: '', note: '' });
+      setFormData({ type: 'in', productId: '', quantity: '', note: '', reason: '' });
       setShowForm(false);
       showToast('Transaksi stok berhasil disimpan!', 'success');
       await loadProducts();
@@ -242,6 +246,49 @@ await stockMovementService.validate(validationId);
               <span className="material-symbols-outlined">{showForm ? 'close' : 'add'}</span>
             </button>
           </div>
+
+          {/* Ringkasan barang keluar. Untuk produk basah, barang ditarik mitra itu hal
+              normal. Yang perlu diwaspadai adalah barang rusak dan hilang,
+              jadi keduanya dipisahkan di sini. */}
+          {alasanRingkas.total > 0 && (
+            <div className="rounded-2xl border border-outline-variant bg-surface-container-lowest p-5 shadow-sm">
+              <div className="flex items-start gap-2 mb-3">
+                <span className="material-symbols-outlined text-on-surface-variant">inventory</span>
+                <div>
+                  <p className="font-headline-sm text-headline-sm text-on-background">Barang Keluar dari Gudang</p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    Mencakup semua pergerakan stok keluar, bukan yang penjualan. Total {alasanRingkas.total} unit.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                <div className="rounded-xl bg-surface-container p-3">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">Ditarik Mitra</p>
+                  <p className="font-headline-sm text-headline-sm text-on-surface font-numeric-data text-numeric-data">
+                    {alasanRingkas.ditarikMitra}
+                  </p>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">normal untuk produk basah</p>
+                </div>
+                {alasanRingkas.daftar
+                  .filter((a) => a.nilai !== 'ditarik_mitra')
+                  .map((a) => (
+                    <div key={a.nilai} className="rounded-xl bg-surface-container p-3">
+                      <p className="font-label-sm text-label-sm text-on-surface-variant">{a.label}</p>
+                      <p className="font-headline-sm text-headline-sm text-error font-numeric-data text-numeric-data">
+                        {a.quantity}
+                      </p>
+                      <p className="font-label-sm text-label-sm text-on-surface-variant">{a.occasions} kejadian</p>
+                    </div>
+                  ))}
+              </div>
+              {alasanRingkas.masalah > 0 && (
+                <p className="mt-3 font-body-sm text-body-sm text-on-surface-variant">
+                  {alasanRingkas.masalah} unit keluar dengan alasan selain ditarik mitra. Kalau angkanya besar,
+                  perlu dicek apakah memang barang hilang atau ada kesalahan pencatatan.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Validation Section */}
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm overflow-hidden">
@@ -389,7 +436,46 @@ await stockMovementService.validate(validationId);
                         <span className="material-symbols-outlined text-[20px]">arrow_drop_down</span>
                       </div>
                     </div>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant">
+                      {formData.type === 'in'
+                        ? 'Barang baru datang dari mitra, atau koreksi hasil stok opname.'
+                        : 'Barang keluar dari gudang. Untuk produk basah biasanya sisa yang ditarik mitra.'}
+                    </p>
                   </div>
+
+                  {/* Alasan. Wajib untuk stok keluar karena Owner perlu memisahkan
+                      barang ditarik mitra dari barang rusak atau hilang. */}
+                  {formData.type === 'out' && (
+                    <div className="space-y-2">
+                      <label className="block font-label-md text-label-md text-on-surface font-medium">
+                        Alasan Barang Keluar
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
+                          <span className="material-symbols-outlined text-[20px]">report_problem</span>
+                        </div>
+                        <select
+                          className="w-full h-12 pl-12 pr-10 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md appearance-none cursor-pointer"
+                          value={formData.reason}
+                          onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                          required
+                        >
+                          <option value="">Pilih Alasan</option>
+                          {ALASAN_STOK_KELUAR.map((a) => (
+                            <option key={a.nilai} value={a.nilai}>{a.label}</option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-outline">
+                          <span className="material-symbols-outlined text-[20px]">arrow_drop_down</span>
+                        </div>
+                      </div>
+                      {formData.reason && (
+                        <p className="font-body-sm text-body-sm text-on-surface-variant">
+                          {hintAlasan(formData.reason)}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Produk */}
                   <div className="space-y-2">
@@ -548,6 +634,7 @@ await stockMovementService.validate(validationId);
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Produk</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Jumlah</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Mitra</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Alasan</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Catatan</th>
                     </tr>
                   </thead>
@@ -585,6 +672,15 @@ await stockMovementService.validate(validationId);
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-body-sm text-body-sm text-on-surface">{movement.mitraName}</span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {movement.type === 'out' && movement.reason ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full font-label-sm text-label-sm bg-surface-container-high text-on-surface-variant">
+                                {labelAlasan(movement.reason)}
+                              </span>
+                            ) : (
+                              <span className="font-body-sm text-body-sm text-on-surface-variant">-</span>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-body-sm text-body-sm text-on-surface-variant">{movement.note || '-'}</span>

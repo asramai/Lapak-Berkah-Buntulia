@@ -65,7 +65,7 @@ function MitraDashboard({ role, user }) {
   const [showStockForm, setShowStockForm] = useState(false);
   const [selectedMitra, setSelectedMitra] = useState(isMitra ? '' : '');
   const [stockDate, setStockDate] = useState(() => getLocalDate(new Date()));
-  const [stockFormData, setStockFormData] = useState({ productId: '', stock: '', note: '' });
+  const [stockFormData, setStockFormData] = useState({ productId: '', stock: '', note: '', type: 'in', reason: '' });
   const [formData, setFormData] = useState({
     fullName: '',
     address: '',
@@ -401,7 +401,14 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
     e.preventDefault();
     if (!selectedMitra || !stockFormData.productId || !stockFormData.stock) return;
     const quantity = Number(stockFormData.stock);
-    const isAdminInput = !isMitra;
+const isAdminInput = !isMitra;
+    const tipe = stockFormData.type || 'in';
+    // Pengajuan barang ditarik wajib punya alasan. Tanpa alasan, Owner tidak
+    // bisa membedakan barang ditarik mitra dari barang rusak atau hilang.
+    if (tipe === 'out' && !stockFormData.reason) {
+      setToast({ message: 'Pilih alasan barang ditarik', type: 'error' });
+      return;
+    }
     try {
       const newStock = await pendingStockValidationService.create({
         mitra_id: selectedMitra,
@@ -410,6 +417,8 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
         quantity,
         note: stockFormData.note,
         status: isAdminInput ? 'validated' : 'pending',
+        type: tipe,
+        reason: tipe === 'out' ? stockFormData.reason : null,
       });
 
       const mitra = mitraList.find((m) => m.id === selectedMitra);
@@ -432,30 +441,35 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
 
 if (isAdminInput && product) {
       // Satu RPC untuk stok dan pergerakannya. Dulu stok diubah tanpa menulis
-      // ke stock_movements sama sekali, jadi penambahan stok dari halaman ini
+      // ke stock_movements sama sekali, jadi perubahan stok dari halaman ini
       // tidak ada jejaknya di riwayat stok. Memakai satu RPC juga menghindari
       // pola baca-lalu-tulis yang bisa saling menimpa.
       await stockMovementService.catat({
         productId: product.id,
-        type: 'in',
+        type: tipe,
         quantity,
         note: stockFormData.note || null,
         mitraId: selectedMitra || null,
+        reason: tipe === 'out' ? stockFormData.reason : null,
       });
       setProducts((prev) =>
-        prev.map((p) => (p.id === product.id ? { ...p, stock: (p.stock || 0) + quantity } : p)),
+        prev.map((p) => (p.id === product.id
+          ? { ...p, stock: tipe === 'in' ? (p.stock || 0) + quantity : Math.max(0, (p.stock || 0) - quantity) }
+          : p)),
       );
     }
 
       await loadData();
-      setStockFormData({ productId: '', stock: '', note: '' });
+      setStockFormData({ productId: '', stock: '', note: '', type: 'in', reason: '' });
       setShowStockForm(false);
       setToast({
-        message: isAdminInput ? 'Stok harian berhasil disimpan dan divalidasi otomatis!' : 'Stok harian berhasil disimpan dan menunggu validasi admin!',
+        message: isAdminInput
+          ? (tipe === 'out' ? 'Barang ditarik, stok berhasil diperbarui!' : 'Stok harian berhasil disimpan dan divalidasi otomatis!')
+          : (tipe === 'out' ? 'Pengajuan penarikan tersimpan dan menunggu validasi admin!' : 'Stok harian berhasil disimpan dan menunggu validasi admin!'),
         type: 'success',
       });
-    } catch {
-      setToast({ message: 'Gagal menyimpan stok harian', type: 'error' });
+    } catch (err) {
+      setToast({ message: err?.message || 'Gagal menyimpan stok harian', type: 'error' });
     }
   };
 
@@ -477,22 +491,26 @@ if (isAdminInput && product) {
       return;
     }
 
+const tipe = stock.type || 'in';
     try {
       await pendingStockValidationService.validate(stockId);
 
-await stockMovementService.catat({
-      productId: product.id,
-      type: 'in',
-      quantity: Number(stock.quantity),
-      note: stock.note || null,
-      mitraId: stock.mitraId ? String(stock.mitraId) : null,
-    });
+      await stockMovementService.catat({
+        productId: product.id,
+        type: tipe,
+        quantity: Number(stock.quantity),
+        note: stock.note || null,
+        mitraId: stock.mitraId ? String(stock.mitraId) : null,
+        reason: tipe === 'out' ? stock.reason : null,
+      });
 
-    setStockInputs((prev) => prev.filter((s) => s.id !== stockId));
+      setStockInputs((prev) => prev.filter((s) => s.id !== stockId));
 
-    setProducts((prev) =>
-      prev.map((p) => (p.id === product.id ? { ...p, stock: (p.stock || 0) + Number(stock.quantity) } : p)),
-    );
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id
+          ? { ...p, stock: tipe === 'in' ? (p.stock || 0) + Number(stock.quantity) : Math.max(0, (p.stock || 0) - Number(stock.quantity)) }
+          : p)),
+      );
 
       await loadData();
       setToast({ message: 'Stok berhasil divalidasi!', type: 'success' });
@@ -670,8 +688,21 @@ await stockMovementService.catat({
                               ))}
                            </select>
                          </div>
+<div className="space-y-2">
+                          <label className="block font-label-sm text-label-sm text-on-surface font-medium">Jenis</label>
+                          <select
+                            className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                            value={stockFormData.type}
+                            onChange={(e) => setStockFormData({ ...stockFormData, type: e.target.value, reason: '' })}
+                          >
+                            <option value="in">Stok Masuk</option>
+                            <option value="out">Stok Keluar (ditarik)</option>
+                          </select>
+                        </div>
                         <div className="space-y-2">
-                          <label className="block font-label-sm text-label-sm text-on-surface font-medium">Stok</label>
+                          <label className="block font-label-sm text-label-sm text-on-surface font-medium">
+                            {stockFormData.type === 'out' ? 'Jumlah Ditarik' : 'Jumlah Stok'}
+                          </label>
                           <input
                             className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
                             type="number"
@@ -681,6 +712,24 @@ await stockMovementService.catat({
                             required
                           />
                         </div>
+                        {stockFormData.type === 'out' && (
+                          <div className="space-y-2">
+                            <label className="block font-label-sm text-label-sm text-on-surface font-medium">
+                              Alasan Ditarik
+                            </label>
+                            <select
+                              className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                              value={stockFormData.reason}
+                              onChange={(e) => setStockFormData({ ...stockFormData, reason: e.target.value })}
+                              required
+                            >
+                              <option value="">Pilih Alasan</option>
+                              {ALASAN_STOK_KELUAR.map((a) => (
+                                <option key={a.nilai} value={a.nilai}>{a.label}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                         <div className="space-y-2">
                           <label className="block font-label-sm text-label-sm text-on-surface font-medium">Catatan</label>
                           <input
@@ -692,9 +741,14 @@ await stockMovementService.catat({
                           />
                         </div>
                       </div>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">
+                        {stockFormData.type === 'in'
+                          ? 'Stok masuk langsung berlaku setelah disimpan oleh Admin, atau menunggu validasi Admin jika diajukan oleh Mitra.'
+                          : 'Barang yang ditarik akan mengurangi stok setelah disetujui Admin. Stok tidak berubah sampai disetujui.'}
+                      </p>
                       <div className="flex justify-end">
                         <button type="submit" className="h-10 px-6 bg-secondary-fixed-dim hover:bg-secondary-container text-on-secondary-container rounded-lg font-label-md text-label-md transition-colors">
-                          Simpan Stok
+                          {stockFormData.type === 'out' ? 'Ajukan Penarikan' : 'Simpan Stok'}
                         </button>
                       </div>
                     </form>

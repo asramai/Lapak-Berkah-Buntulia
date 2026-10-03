@@ -647,13 +647,14 @@ export const stockMovementService = {
   // Dulu keduanya dua permintaan terpisah: pergerakan ditulis dulu, baru stok
   // diubah. Kalau stok kurang saat keluar, pergerakannya sudah terlanjur
   // tersimpan padahal stoknya tidak pernah berkurang.
-  async catat({ productId, type, quantity, note = null, mitraId = null }) {
+  async catat({ productId, type, quantity, note = null, mitraId = null, reason = null }) {
     const { data, error } = await supabase.rpc('record_stock_movement', {
       p_product_id: productId,
       p_type: type,
       p_qty: Number(quantity),
       p_note: note,
       p_mitra_id: mitraId,
+      p_reason: reason,
     });
 
     if (error) throw error;
@@ -676,7 +677,7 @@ export const stockMovementService = {
   async getAll(filters = {}, { limit, offset } = {}) {
     let query = supabase
       .from('stock_movements')
-      .select('id, product_id, type, quantity, note, mitra_id, created_at, product:product_id (nama_produk, unit), mitra:mitra_id (full_name)')
+      .select('id, product_id, type, quantity, note, mitra_id, reason, created_at, product:product_id (nama_produk, unit), mitra:mitra_id (full_name)')
       .order('created_at', { ascending: false });
 
     if (filters.type) query = query.eq('type', filters.type);
@@ -718,15 +719,27 @@ export const stockMovementService = {
 };
 
 export const pendingStockValidationService = {
-  async create(validation) {
-    const { data, error } = await supabase
-      .from('pending_stock_validations')
-      .insert([validation])
-      .select()
-      .single();
+async create(validation) {
+  const { data, error } = await supabase
+    .from('pending_stock_validations')
+    .insert([validation])
+    .select()
+    .single();
 
-    if (error) throw error;
-    return data;
+  if (error) throw error;
+  return data;
+  },
+
+  // Menolak pengajuan. Untuk pengajuan barang ditarik, stok tidak disentuh sama
+  // sekali karena barangnya memang tidak masuk ke gudang.
+  async reject(validationId) {
+  const { error } = await supabase
+  .from('pending_stock_validations')
+  .update({ status: 'rejected' })
+  .eq('id', validationId)
+  .eq('status', 'pending');
+
+  if (error) throw error;
   },
 
   async getAll(filters = {}, { limit, offset } = {}) {
