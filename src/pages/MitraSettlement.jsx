@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { mitraSettlementService, mitraService, productService, transactionService, stockMovementService } from '../lib/services';
+import { mitraSettlementService, mitraService, productService, transactionService, returnService } from '../lib/services';
+import { buildProfitRows, summarizeProfit, getLocalDate } from '../lib/profitReport';
 
 function MitraSettlement({ user }) {
   const [settlements, setSettlements] = useState([]);
   const [mitraList, setMitraList] = useState([]);
   const [products, setProducts] = useState([]);
   const [soldQuantities, setSoldQuantities] = useState({});
+  const [salesSummary, setSalesSummary] = useState(null);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [allReturns, setAllReturns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSettlement, setEditingSettlement] = useState(null);
@@ -28,58 +32,67 @@ function MitraSettlement({ user }) {
     loadData();
   }, []);
 
+  // Dihitung ulang setiap kali mitra atau data penjualan berubah, karena
+  // sekarang qty dihitung di frontend dari satu sumber kalkulasi.
   useEffect(() => {
-    if (formData.mitra_id) {
-      calculateSoldQuantities(formData.mitra_id);
+    if (!formData.mitra_id) {
+      setSoldQuantities({});
+      setSalesSummary(null);
+      return;
     }
-  }, [formData.mitra_id]);
+    const today = getLocalDate(new Date());
+    calculateSoldQuantities(formData.mitra_id, formData.date || today, formData.date || today);
+    // calculateSoldQuantities murni: hanya membaca props/closure yang sudah
+    // ada di daftar dependensi di atas.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.mitra_id, formData.date, allTransactions, allReturns, products]);
 
-  const calculateSoldQuantities = async (mitraId) => {
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: transactions } = await transactionService.getHistory({
-        startDate: today,
-        endDate: today,
-        mitraId,
-      });
+// Qty terjual untuk mitra terpilih.
+//
+// DULU bug di sini: qty dijumlahkan dari transaction_items DAN dari
+// stock_movements(type 'out'). Satu kali penjualan menulis KEDUA record
+// (KasirDesktop.jsx), jadi qty terhitung 2x dan nota mitra issued 2x lipat
+// dari seharusnya. Sekarang cukup satu sumber: modul kalkulasi, yang juga
+// sudah memotong retur dan mengabaikan transaksi Dibatalkan.
+const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
+  const rows = buildProfitRows({
+    transactions: allTransactions,
+    returns: allReturns,
+    products,
+    startDate: dateFrom,
+    endDate: dateTo,
+  });
 
-      const quantities = {};
-      (transactions || []).forEach(tx => {
-        (tx.items || []).forEach(item => {
-          if (item.product_id) {
-            quantities[item.product_id] = (quantities[item.product_id] || 0) + item.quantity;
-          }
-        });
-      });
-
-      const { data: movements } = await stockMovementService.getAll({
-        type: 'out',
-        mitraId,
-      });
-
-      (movements || []).forEach(m => {
-        if (m.product_id) {
-          quantities[m.product_id] = (quantities[m.product_id] || 0) + m.quantity;
-        }
-      });
-
-      setSoldQuantities(quantities);
-    } catch {
-      // silently continue
+  const quantities = {};
+  rows.forEach((row) => {
+    if (String(row.mitraId) !== String(mitraId)) return;
+    if (row.productId) {
+      quantities[row.productId] = (quantities[row.productId] || 0) + row.netQty;
     }
-  };
+  });
+
+  const summary = summarizeProfit(rows.filter((row) => String(row.mitraId) === String(mitraId)));
+
+  setSoldQuantities(quantities);
+  setSalesSummary(summary);
+  return { quantities, summary };
+};
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [settlementsData, mitraData, productsData] = await Promise.all([
+      const [settlementsData, mitraData, productsData, txData, returnData] = await Promise.all([
         mitraSettlementService.getAll().catch(() => []),
         mitraService.getAll(),
         productService.getAll(),
+        transactionService.getHistory().catch(() => []),
+        returnService.getAll().catch(() => []),
       ]);
       setSettlements(settlementsData || []);
       setMitraList(mitraData || []);
       setProducts(productsData || []);
+      setAllTransactions(txData || []);
+      setAllReturns(returnData || []);
     } catch {
       showToast('Gagal memuat data', 'error');
     } finally {
@@ -535,6 +548,30 @@ function MitraSettlement({ user }) {
                   </div>
 
                   <div className="space-y-3">
+                    {/* Pembanding: penjualan riil dari modul kalkulasi vs nilai nota ini */}
+                    {salesSummary && salesSummary.totalPenjualan > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-3">
+                          <p className="font-label-sm text-label-sm text-on-surface-variant">Terjual hari ini</p>
+                          <p className="font-headline-sm text-headline-sm text-on-background font-numeric-data text-numeric-data">
+                            Rp {salesSummary.totalPenjualan.toLocaleString('id-ID')}
+                          </p>
+                        </div>
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-3">
+                          <p className="font-label-sm text-label-sm text-on-surface-variant">Porsi Mitra (modal)</p>
+                          <p className="font-headline-sm text-headline-sm text-on-surface-variant font-numeric-data text-numeric-data">
+                            Rp {salesSummary.untukMitra.toLocaleString('id-ID')}
+                          </p>
+                        </div>
+                        <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-3">
+                          <p className="font-label-sm text-label-sm text-on-surface-variant">Porsi Owner (selisih)</p>
+                          <p className="font-headline-sm text-headline-sm text-primary font-numeric-data text-numeric-data">
+                            Rp {salesSummary.untukOwner.toLocaleString('id-ID')}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {formData.items.map((item, index) => (
                       <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end p-4 bg-surface-container rounded-xl border border-outline-variant">
                         <div className="md:col-span-4 space-y-2">

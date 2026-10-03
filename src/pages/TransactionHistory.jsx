@@ -87,22 +87,44 @@ function TransactionHistory({ user }) {
     return filteredHistory.slice(start, start + itemsPerPage);
   }, [filteredHistory, currentPage, itemsPerPage]);
 
-  // Omzet memakai modul kalkulasi yang sama dengan Laporan Pembagian Keuntungan,
-  // jadi angka di kartu ini dijamin sama dengan laporan.
-  const omzetRows = useMemo(() => {
-    const filterStart = startDate || '0000-01-01';
-    const filterEnd = endDate || '9999-12-31';
-    const rows = buildProfitRows({ transactions: history, returns: returnRows, products, startDate: filterStart, endDate: filterEnd });
-    const activeIds = new Set(filteredHistory.map((h) => h.id));
-    const scoped = rows.filter((r) => activeIds.has(r.transactionId));
+  // Omzet memakai modul kalkulasi yang sama dengan Laporan Pembagian Keuntungan.
+  // Penting: baris tabel HARUS memakai angka yang sama dengan kartu, supaya
+  // jumlah baris selalu sama dengan total di atas.
+  const scopedProfitRows = useMemo(() => {
+    const rows = buildProfitRows({
+      transactions: history,
+      returns: returnRows,
+      products,
+      startDate: '0000-01-01',
+      endDate: '9999-12-31',
+    });
+    const visibleIds = new Set(filteredHistory.map((h) => h.id));
+    const scoped = rows.filter((r) => visibleIds.has(r.transactionId));
     const keyword = searchQuery.trim().toLowerCase();
-    const finalRows = !keyword
-      ? scoped
-      : scoped.filter(
-        (r) => r.mitraName.toLowerCase().includes(keyword) || (r.productName || '').toLowerCase().includes(keyword)
-      );
-    return summarizeProfit(finalRows);
-  }, [history, returnRows, products, startDate, endDate, filteredHistory, searchQuery]);
+    if (!keyword) return scoped;
+    return scoped.filter(
+      (r) => r.mitraName.toLowerCase().includes(keyword) || (r.productName || '').toLowerCase().includes(keyword)
+    );
+  }, [history, returnRows, products, filteredHistory, searchQuery]);
+
+  const omzetRows = useMemo(() => summarizeProfit(scopedProfitRows), [scopedProfitRows]);
+
+  // Angka per transaksi untuk kolom tabel.
+  const perTransaction = useMemo(() => {
+    const map = new Map();
+    scopedProfitRows.forEach((row) => {
+      const existing = map.get(row.transactionId) || {
+        totalSales: 0, untukMitra: 0, untukOwner: 0, retur: 0, qty: 0,
+      };
+      existing.totalSales += row.totalSales;
+      existing.untukMitra += row.untukMitra;
+      existing.untukOwner += row.untukOwner;
+      existing.retur += row.returnedQty;
+      existing.qty += row.netQty;
+      map.set(row.transactionId, existing);
+    });
+    return map;
+  }, [scopedProfitRows]);
 
   const totalTransactions = filteredHistory.length;
   const totalOmzet = omzetRows.totalPenjualan;
@@ -389,15 +411,20 @@ function TransactionHistory({ user }) {
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">ID</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Tanggal</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Mitra</th>
-                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Item</th>
-                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Total</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Qty</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Retur</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Total Penjualan</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Untuk Mitra</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Untuk Owner</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Metode</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-center">Status</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="font-body-md text-body-md divide-y divide-outline-variant/50">
-                     {paginatedHistory.map((h, idx) => (
+                     {paginatedHistory.map((h, idx) => {
+                       const angka = perTransaction.get(h.id) || { totalSales: 0, untukMitra: 0, untukOwner: 0, retur: 0, qty: 0 };
+                       return (
                       <tr key={h.id} className={`hover:bg-surface-container-low/50 transition-colors duration-150 ${idx % 2 === 1 ? 'bg-surface-container-low/20' : ''}`}>
                         <td className="px-6 py-4">
                           <span className="font-mono text-sm bg-surface-container px-2 py-1 rounded-md text-on-surface-variant">#{h.transactionId}</span>
@@ -409,10 +436,21 @@ function TransactionHistory({ user }) {
                           <span className="font-body-sm text-body-sm text-on-surface">{h.mitraName}</span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <span className="font-numeric-data text-numeric-data text-on-background">{h.items}</span>
+                          <span className="font-numeric-data text-numeric-data text-on-background">{angka.qty}</span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <span className="font-numeric-data text-numeric-data text-primary font-semibold">Rp {h.total.toLocaleString('id-ID')}</span>
+                          <span className={`font-numeric-data text-numeric-data ${angka.retur > 0 ? 'text-[#7a590c] font-semibold' : 'text-outline'}`}>
+                            {angka.retur > 0 ? angka.retur : '-'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-on-background font-semibold">Rp {angka.totalSales.toLocaleString('id-ID')}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-on-surface-variant">Rp {angka.untukMitra.toLocaleString('id-ID')}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-primary font-semibold">Rp {angka.untukOwner.toLocaleString('id-ID')}</span>
                         </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-label-sm text-label-sm bg-surface-container text-on-surface-variant border border-outline-variant">
@@ -460,8 +498,20 @@ function TransactionHistory({ user }) {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                     })}
                   </tbody>
+                  <tfoot className="border-t-2 border-outline-variant bg-surface-container-low">
+                    <tr className="font-headline-sm text-headline-sm">
+                      <td className="px-6 py-4" colSpan={3}>Rekap Total</td>
+                      <td className="px-6 py-4 text-right">{omzetRows.totalQty.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right">{omzetRows.totalRetur > 0 ? omzetRows.totalRetur : '-'}</td>
+                      <td className="px-6 py-4 text-right text-on-background">Rp {omzetRows.totalPenjualan.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right text-on-surface-variant">Rp {omzetRows.untukMitra.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right text-primary">Rp {omzetRows.untukOwner.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4" colSpan={3} />
+                    </tr>
+                  </tfoot>
                 </table>
                 <Pagination
                   totalItems={totalTransactions}

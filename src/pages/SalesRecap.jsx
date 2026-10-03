@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { transactionService, productService, returnService, mitraService } from '../lib/services';
-import { buildProfitRows, summarizeProfit } from '../lib/profitReport';
+import { buildProfitRows, summarizeProfit, summarizeByMitra } from '../lib/profitReport';
+import { downloadSpreadsheet, openPrintableReport } from '../lib/exportReport';
 
 function SalesRecap() {
   const [transactions, setTransactions] = useState([]);
@@ -60,6 +61,8 @@ function SalesRecap() {
         produk: [],
         qty: 0,
         total: 0,
+        untukMitra: 0,
+        untukOwner: 0,
         retur: 0,
         paymentMethod: row.paymentMethod,
         status: row.status,
@@ -67,6 +70,8 @@ function SalesRecap() {
       if (!existing.produk.includes(row.productName)) existing.produk.push(row.productName);
       existing.qty += row.netQty;
       existing.total += row.totalSales;
+      existing.untukMitra += row.untukMitra;
+      existing.untukOwner += row.untukOwner;
       existing.retur += row.returnedQty;
       grouped.set(row.transactionId, existing);
     });
@@ -75,111 +80,114 @@ function SalesRecap() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [profitRows, selectedMitra]);
 
-  const summary = useMemo(() => {
+const summary = useMemo(() => {
     const scoped = selectedMitra === 'Semua Mitra'
       ? profitRows
       : profitRows.filter((row) => row.mitraName === selectedMitra);
     return summarizeProfit(scoped);
   }, [profitRows, selectedMitra]);
 
+  const byMitra = useMemo(() => {
+    const scoped = selectedMitra === 'Semua Mitra'
+      ? profitRows
+      : profitRows.filter((row) => row.mitraName === selectedMitra);
+    return summarizeByMitra(scoped);
+  }, [profitRows, selectedMitra]);
+
+  const rangeLabel = useMemo(() => {
+    if (!startDate && !endDate) return 'Semua Periode';
+    if (startDate && endDate) return startDate === endDate ? startDate : `${startDate} s/d ${endDate}`;
+    return startDate ? `Sejak ${startDate}` : `Sampai ${endDate}`;
+  }, [startDate, endDate]);
+
   const totalSales = summary.totalPenjualan;
   const totalQty = summary.totalQty;
 
   const handleExportExcel = () => {
-    const headers = ['No', 'Tanggal', 'Mitra', 'Produk', 'Qty', 'Total', 'Metode', 'Status'];
-    const rows = filteredTransactions.map((t, i) => [
-      i + 1,
-      t.date,
-      `"${t.mitraName}"`,
-      `"${t.productName}"`,
-      t.qty,
-      t.total,
-      t.paymentMethod,
-      t.status,
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `laporan-penjualan-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    downloadSpreadsheet({
+      fileName: `laporan-penjualan-${startDate || 'awal'}-sd-${endDate || 'akhir'}.xls`,
+      multiSheet: [
+        {
+          sheetName: 'Transaksi',
+          title: 'LAPAK BERKAH BUNTULIA - Laporan Penjualan',
+          subtitle: `Periode: ${rangeLabel}`,
+          headers: [
+            'No', 'Tanggal', 'Mitra', 'Produk', 'Qty', 'Retur',
+            'Total Penjualan', 'Untuk Mitra', 'Untuk Owner', 'Metode', 'Status',
+          ],
+          rows: filteredTransactions.map((t, i) => [
+            i + 1, t.date, t.mitraName, t.productName, t.qty, t.retur,
+            { value: t.total, money: true },
+            { value: t.untukMitra, money: true },
+            { value: t.untukOwner, money: true },
+            t.paymentMethod, t.status,
+          ]),
+          summary: [
+            ['Total Penjualan', { value: summary.totalPenjualan, money: true }],
+            ['Untuk Mitra', { value: summary.untukMitra, money: true }],
+            ['Untuk Owner', { value: summary.untukOwner, money: true }],
+          ],
+        },
+        {
+          sheetName: 'Per Mitra',
+          title: 'Penjualan per Mitra',
+          subtitle: `Periode: ${rangeLabel}`,
+          headers: ['Mitra', 'Total Penjualan', 'Untuk Mitra', 'Untuk Owner', 'Qty'],
+          rows: byMitra.map((m) => [
+            m.mitraName,
+            { value: m.totalPenjualan, money: true },
+            { value: m.untukMitra, money: true },
+            { value: m.untukOwner, money: true },
+            m.totalQty,
+          ]),
+        },
+      ],
+    });
     showToast('Export Excel berhasil!', 'success');
   };
 
   const handleExportPDF = () => {
-    const rows = filteredTransactions.map((t, i) => `
-      <tr style="border-bottom: 1px solid #eee;">
-        <td style="padding: 8px; text-align: center;">${i + 1}</td>
-        <td style="padding: 8px;">${t.date}</td>
-        <td style="padding: 8px;">${t.mitraName}</td>
-        <td style="padding: 8px;">${t.productName}</td>
-        <td style="padding: 8px; text-align: center;">${t.qty}</td>
-        <td style="padding: 8px; text-align: right;">Rp ${t.total.toLocaleString('id-ID')}</td>
-        <td style="padding: 8px;">${t.paymentMethod}</td>
-        <td style="padding: 8px;">${t.status}</td>
-      </tr>
-    `).join('');
+    const result = openPrintableReport({
+      title: 'Laporan Penjualan',
+      subtitle: `Periode: ${rangeLabel}`,
+      sections: [
+        {
+          heading: 'Pembagian Keuntungan',
+          note: 'Total Penjualan = Untuk Mitra + Untuk Owner',
+          cards: [
+            { label: 'Total Penjualan', value: summary.totalPenjualan, caption: `${summary.totalTransaksi} transaksi` },
+            { label: 'Untuk Mitra', value: summary.untukMitra, caption: `${summary.porsiMitraPercent.toFixed(1)}% dari penjualan` },
+            { label: 'Untuk Owner', value: summary.untukOwner, hero: true, caption: `Margin ${summary.marginPercent.toFixed(1)}%` },
+          ],
+        },
+        {
+          heading: 'Rincian Transaksi',
+          headers: [
+            { label: 'No' },
+            { label: 'Tanggal' },
+            { label: 'Mitra' },
+            { label: 'Produk' },
+            { label: 'Qty', align: 'right' },
+            { label: 'Total Penjualan', align: 'right' },
+            { label: 'Untuk Mitra', align: 'right' },
+            { label: 'Untuk Owner', align: 'right' },
+          ],
+          rows: filteredTransactions.map((t, i) => [
+            i + 1, t.date, t.mitraName, t.productName, t.qty,
+            { value: t.total, money: true, align: 'right' },
+            { value: t.untukMitra, money: true, align: 'right' },
+            { value: t.untukOwner, money: true, align: 'right', emphasis: true },
+          ]),
+        },
+      ],
+    });
 
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Laporan Penjualan</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #111; }
-    table { width: 100%; border-collapse: collapse; }
-    th { background: #f5f5f5; padding: 8px; text-align: left; font-weight: 600; border-bottom: 2px solid #ccc; }
-    .header { text-align: center; margin-bottom: 20px; }
-    .header h1 { margin: 0 0 4px 0; font-size: 18px; }
-    .header p { margin: 0; font-size: 12px; color: #666; }
-    .summary { display: flex; gap: 20px; margin-bottom: 20px; font-size: 12px; }
-    .summary div { padding: 8px 12px; background: #f9f9f9; border-radius: 4px; }
-    @media print { body { padding: 0; } }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>LAPAK BERKAH BUNTULIA</h1>
-    <p>Laporan Penjualan - ${new Date().toLocaleDateString('id-ID')}</p>
-  </div>
-  <div class="summary">
-    <div><strong>Total Transaksi:</strong> ${filteredTransactions.length}</div>
-    <div><strong>Total Penjualan:</strong> Rp ${totalSales.toLocaleString('id-ID')}</div>
-    <div><strong>Total Qty:</strong> ${totalQty}</div>
-  </div>
-  <table>
-    <thead>
-      <tr>
-        <th>No</th>
-        <th>Tanggal</th>
-        <th>Mitra</th>
-        <th>Produk</th>
-        <th>Qty</th>
-        <th>Total</th>
-        <th>Metode</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <script>window.onload = function() { window.print(); }</script>
-</body>
-</html>`;
-
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank', 'width=800,height=600');
-    if (!printWindow) {
+    if (!result.ok) {
       showToast('Popup diblokir. Izinkan popup untuk export PDF.', 'error');
-      URL.revokeObjectURL(url);
       return;
     }
-    showToast('Export PDF berhasil! Pilih "Save as PDF" di dialog cetak.', 'success');
+    showToast('Dialog print dibuka, pilih "Save as PDF"', 'success');
   };
-
   if (loading) {
     return (
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full">
@@ -384,8 +392,11 @@ function SalesRecap() {
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Tanggal</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Mitra</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Produk</th>
-                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Qty</th>
-                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Total</th>
+<th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Qty</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Retur</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Total Penjualan</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Untuk Mitra</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Untuk Owner</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Metode</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-center">Status</th>
                     </tr>
@@ -408,11 +419,22 @@ function SalesRecap() {
                         <td className="px-6 py-4">
                           <span className="font-body-sm text-body-sm text-on-surface">{transaction.productName}</span>
                         </td>
-                        <td className="px-6 py-4 text-right">
+<td className="px-6 py-4 text-right">
                           <span className="font-numeric-data text-numeric-data text-on-background">{transaction.qty}</span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <span className="font-numeric-data text-numeric-data text-primary font-semibold">Rp {transaction.total.toLocaleString('id-ID')}</span>
+                          <span className={`font-numeric-data text-numeric-data ${transaction.retur > 0 ? 'text-[#7a590c]' : 'text-outline'}`}>
+                            {transaction.retur > 0 ? transaction.retur : '-'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-on-background font-semibold">Rp {transaction.total.toLocaleString('id-ID')}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-on-surface-variant">Rp {transaction.untukMitra.toLocaleString('id-ID')}</span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <span className="font-numeric-data text-numeric-data text-primary font-semibold">Rp {transaction.untukOwner.toLocaleString('id-ID')}</span>
                         </td>
                         <td className="px-6 py-4">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-label-sm text-label-sm bg-surface-container text-on-surface-variant border border-outline-variant">
@@ -425,9 +447,20 @@ function SalesRecap() {
                             {transaction.status}
                           </span>
                         </td>
-                      </tr>
+</tr>
                     ))}
                   </tbody>
+                  <tfoot className="border-t-2 border-outline-variant bg-surface-container-low">
+                    <tr className="font-headline-sm text-headline-sm">
+                      <td className="px-6 py-4" colSpan={4}>Rekap Total</td>
+                      <td className="px-6 py-4 text-right">{summary.totalQty.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right">{summary.totalRetur > 0 ? summary.totalRetur : '-'}</td>
+                      <td className="px-6 py-4 text-right text-on-background">Rp {summary.totalPenjualan.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right text-on-surface-variant">Rp {summary.untukMitra.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4 text-right text-primary">Rp {summary.untukOwner.toLocaleString('id-ID')}</td>
+                      <td className="px-6 py-4" colSpan={2} />
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             )}
