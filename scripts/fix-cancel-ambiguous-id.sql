@@ -11,7 +11,7 @@
 --   PL/pgSQL di dalam badan fungsi.
 --
 --   Di dalam loop ada:
---     UPDATE products SET stock = stock + v_item.quantity WHERE id = q_item.product_id;
+--     UPDATE products SET stock = stock + v_item.quantity WHERE id = v_item.product_id;
 --
 --   PostgreSQL melihat "id" dan tidak tahu yang dimaksud kolom products.id
 --   atau variabel output id, jadi menolak. Tapi fungsi ini tetap berjalan untuk
