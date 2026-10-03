@@ -41,8 +41,7 @@ const changedFiles = async () => {
   }
   return stdout
     .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .filter((line) => line.trim().length > 0);
 };
 
 const buildMessage = (entries) => {
