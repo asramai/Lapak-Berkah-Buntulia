@@ -17,6 +17,17 @@
 --
 -- CARA PAKAI: Supabase -> SQL Editor -> New query -> tempel file ini -> Run.
 -- Idempoten.
+--
+-- PERINGATAN:
+--   Fungsi ini HANYA dipakai untuk review, tidak dipakai kasir. Kalau ternyata
+--   masih gagal, fitur QRIS tetap berfungsi normal, Owner hanya belum punya
+--   daftar konfirmasi siap pakai.
+
+-- WAJIB drop dulu. PostgreSQL tidak mengizinkan CREATE OR REPLACE mengubah
+-- tipe return fungsi yang sudah ada: "cannot change return type of existing
+-- function". Fungsi versi lama memang selalu gagal dipanggil karena salah
+-- tipe, jadi tidak ada yang hilang saat dihapus.
+DROP FUNCTION IF EXISTS daftar_konfirmasi_qris(INTEGER);
 
 CREATE OR REPLACE FUNCTION daftar_konfirmasi_qris(p_limit INTEGER DEFAULT 200)
 RETURNS TABLE(
