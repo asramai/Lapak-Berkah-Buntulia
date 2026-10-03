@@ -643,6 +643,23 @@ export const transactionItemService = {
 };
 
 export const stockMovementService = {
+  // Stok masuk dan pencatatan pergerakannya dalam satu transaksi database.
+  // Dulu keduanya dua permintaan terpisah: pergerakan ditulis dulu, baru stok
+  // diubah. Kalau stok kurang saat keluar, pergerakannya sudah terlanjur
+  // tersimpan padahal stoknya tidak pernah berkurang.
+  async catat({ productId, type, quantity, note = null, mitraId = null }) {
+    const { data, error } = await supabase.rpc('record_stock_movement', {
+      p_product_id: productId,
+      p_type: type,
+      p_qty: Number(quantity),
+      p_note: note,
+      p_mitra_id: mitraId,
+    });
+
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
   async create(movement) {
     const { data, error } = await supabase
       .from('stock_movements')

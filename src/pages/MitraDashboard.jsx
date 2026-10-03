@@ -430,13 +430,22 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
         },
       ]);
 
-      if (isAdminInput && product) {
-        const updatedStock = (product.stock || 0) + quantity;
-        await productService.update(product.id, { stock: updatedStock });
-        setProducts((prev) =>
-          prev.map((p) => (p.id === product.id ? { ...p, stock: updatedStock } : p)),
-        );
-      }
+if (isAdminInput && product) {
+      // Satu RPC untuk stok dan pergerakannya. Dulu stok diubah tanpa menulis
+      // ke stock_movements sama sekali, jadi penambahan stok dari halaman ini
+      // tidak ada jejaknya di riwayat stok. Memakai satu RPC juga menghindari
+      // pola baca-lalu-tulis yang bisa saling menimpa.
+      await stockMovementService.catat({
+        productId: product.id,
+        type: 'in',
+        quantity,
+        note: stockFormData.note || null,
+        mitraId: selectedMitra || null,
+      });
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, stock: (p.stock || 0) + quantity } : p)),
+      );
+    }
 
       await loadData();
       setStockFormData({ productId: '', stock: '', note: '' });
@@ -471,25 +480,19 @@ const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.
     try {
       await pendingStockValidationService.validate(stockId);
 
-      const payload = {
-        type: 'in',
-        product_id: String(stock.productId),
-        quantity: Number(stock.quantity),
-        note: stock.note || '',
-        mitra_id: stock.mitraId ? String(stock.mitraId) : null,
-      };
+await stockMovementService.catat({
+      productId: product.id,
+      type: 'in',
+      quantity: Number(stock.quantity),
+      note: stock.note || null,
+      mitraId: stock.mitraId ? String(stock.mitraId) : null,
+    });
 
-      await stockMovementService.create(payload);
+    setStockInputs((prev) => prev.filter((s) => s.id !== stockId));
 
-      setStockInputs((prev) => prev.filter((s) => s.id !== stockId));
-
-      if (product) {
-        const updatedStock = (product.stock || 0) + Number(stock.quantity);
-        await productService.update(product.id, { stock: updatedStock });
-        setProducts((prev) =>
-          prev.map((p) => (p.id === product.id ? { ...p, stock: updatedStock } : p)),
-        );
-      }
+    setProducts((prev) =>
+      prev.map((p) => (p.id === product.id ? { ...p, stock: (p.stock || 0) + Number(stock.quantity) } : p)),
+    );
 
       await loadData();
       setToast({ message: 'Stok berhasil divalidasi!', type: 'success' });

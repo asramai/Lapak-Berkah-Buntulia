@@ -136,21 +136,13 @@ function StockManagement() {
     setValidationPage(1);
   }, [valMitra, valStartDate, valEndDate]);
 
-  const updateProductStock = async (productId, quantity, type) => {
-    if (type === 'out') {
-      const success = await productService.decrementStock(productId, quantity);
-      if (!success) {
-        throw new Error('Stok tidak cukup untuk dikurangi');
-      }
-    } else {
-      // Pakai RPC atomik, bukan baca-lalu-tulis. Kalau stok dibaca dulu lalu
-      // ditulis balik, dua penambahan stok yang hampir bersamaan bisa sama-sama
-      // membaca angka yang sama, dan salah satu penambahannya hilang. RPC
-      // decrement_product_stock dan increment_product_stock melakukan
-      // UPDATE ... SET stock = stock + qty di dalam database, jadi tidak ada
-      // celah untuk saling menimpa.
-      await productService.incrementStock(productId, quantity);
-    }
+  // Simpan lewat satu RPC: stok diubah dan pergerakannya dicatat dalam satu
+  // transaksi. Dulu pergerakannya ditulis lebih dulu, jadi stok keluar yang
+  // melebihi stok meninggalkan riwayat yang menyatakan barang keluar padahal
+  // stoknya tidak pernah berkurang.
+  const catatStok = async ({ productId, type, quantity, note, mitraId }) => {
+    await stockMovementService.catat({ productId, type, quantity, note, mitraId });
+    window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
   };
 
   const handleSubmit = async (e) => {
@@ -159,23 +151,24 @@ function StockManagement() {
     if (!product || !formData.quantity || Number(formData.quantity) <= 0) return;
 
     try {
-      await stockMovementService.create({
+      await catatStok({
+        productId: String(formData.productId),
         type: formData.type,
-        product_id: String(formData.productId),
         quantity: Number(formData.quantity),
-        note: formData.note,
-        mitra_id: formData.type === 'in' ? String(product.mitraId) : null,
+        note: formData.note || null,
+        // Stok keluar tetap dicatat mitranya: untuk produk basah, ini berarti
+        // mitra menarik barang yang belum terjual. Productnya sudah punya
+        // mitra, jadi biarkan fungsi yang mengisinya dari produk.
+        mitraId: formData.type === 'in' && product.mitraId ? String(product.mitraId) : null,
       });
-
-      await updateProductStock(formData.productId, Number(formData.quantity), formData.type);
       setFormData({ type: 'in', productId: '', quantity: '', note: '' });
       setShowForm(false);
       showToast('Transaksi stok berhasil disimpan!', 'success');
       await loadProducts();
       await loadMovements();
       await loadValidations();
-    } catch {
-      showToast('Gagal menyimpan transaksi stok', 'error');
+    } catch (err) {
+      showToast(err?.message || 'Gagal menyimpan transaksi stok', 'error');
     }
   };
 
@@ -187,17 +180,15 @@ function StockManagement() {
     if (!product) return;
 
     try {
-      await pendingStockValidationService.validate(validationId);
+await stockMovementService.validate(validationId);
 
-      await stockMovementService.create({
+      await catatStok({
+        productId: validation.productId,
         type: 'in',
-        product_id: String(validation.productId),
         quantity: validation.quantity,
         note: validation.note,
-        mitra_id: validation.mitraId ? String(validation.mitraId) : null,
+        mitraId: validation.mitraId ? String(validation.mitraId) : null,
       });
-
-      await updateProductStock(validation.productId, validation.quantity, 'in');
       showToast('Stok berhasil divalidasi!', 'success');
       await loadProducts();
       await loadMovements();
