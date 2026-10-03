@@ -171,7 +171,7 @@ function App() {
             {page === 'sales-recap' && <SalesRecap />}
             {page === 'mitra' && <MitraDashboard role={role} user={user} />}
             {page === 'inventory' && <Inventory />}
-            {page === 'transaction-history' && <TransactionHistory />}
+            {page === 'transaction-history' && <TransactionHistory user={user} />}
             {page === 'stock-management' && <StockManagement />}
             {page === 'product' && <ProductManagement />}
             {page === 'mitra-settlement' && <MitraSettlement user={user} />}

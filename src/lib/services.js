@@ -163,6 +163,29 @@ export const productService = {
     return data;
   },
 
+  async incrementStock(id, qty) {
+    const { data, error } = await supabase
+      .rpc('increment_product_stock', { p_product_id: id, p_qty: qty });
+
+    if (error) {
+      throw error;
+    }
+    return data;
+  },
+
+  async getStockByIds(ids) {
+    const uniqueIds = [...new Set((ids || []).filter(Boolean))];
+    if (uniqueIds.length === 0) return [];
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('id, stock, nama_produk, unit')
+      .in('id', uniqueIds);
+
+    if (error) throw error;
+    return data || [];
+  },
+
   async delete(id) {
     const { error } = await supabase
       .from('products')

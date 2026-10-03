@@ -1,17 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { transactionService, returnService, productService, stockMovementService } from '../lib/services';
 import { printReceipt as printReceiptBluetooth, printReturnReceiptBluetooth } from '../lib/bluetoothPrinter';
 import Pagination from '../components/Pagination';
 
-function TransactionHistory() {
+function TransactionHistory({ user }) {
   const [history, setHistory] = useState([]);
-  const [_error, setError] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('Semua');
   const [returnModal, setReturnModal] = useState({ open: false, transaction: null });
   const [returnItems, setReturnItems] = useState({});
+  const [returnedQty, setReturnedQty] = useState({});
   const [returnReason, setReturnReason] = useState('');
   const [processingReturn, setProcessingReturn] = useState(false);
   const [toast, setToast] = useState(null);
@@ -23,11 +25,49 @@ function TransactionHistory() {
     setTimeout(() => setToast(null), 3000);
   };
 
+  const loadTransactions = useCallback(async () => {
+    setLoading(true);
+    try {
+      setError(null);
+      const data = await transactionService.getHistory();
+
+      const mapped = data.map((tx) => {
+        const txId = tx.transaction_id || `TX-${String(tx.id).padStart(3, '0')}`;
+        const rawDate = tx.created_at || '';
+        const formattedDate = rawDate
+          ? rawDate.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 16)
+          : '';
+        const totalQty = tx.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+
+        return {
+          id: tx.id,
+          transactionId: txId,
+          date: formattedDate,
+          mitraId: tx.mitra_id || null,
+          mitraName: tx.mitra?.full_name || 'Tidak Diketahui',
+          items: totalQty,
+          rawItems: tx.items || [],
+          total: tx.total || 0,
+          paymentMethod: tx.metode_pembayaran || '-',
+          status: tx.status || '-',
+          paid: tx.paid || 0,
+          change: tx.change || 0,
+        };
+      });
+
+      setHistory(mapped);
+    } catch (err) {
+      setError(err.message || 'Gagal memuat riwayat transaksi');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const filteredHistory = useMemo(() => {
     return history.filter((h) => {
       const matchesSearch = h.transactionId.toLowerCase().includes(searchQuery.toLowerCase()) ||
         h.mitraName.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesDate = (!startDate || h.date >= startDate) && (!endDate || h.date >= endDate + ' 23:59');
+      const matchesDate = (!startDate || h.date >= startDate) && (!endDate || h.date <= endDate + ' 23:59');
       const matchesPayment = selectedPayment === 'Semua' || h.paymentMethod === selectedPayment;
       return matchesSearch && matchesDate && matchesPayment;
     });
@@ -42,53 +82,40 @@ function TransactionHistory() {
   const totalOmzet = useMemo(() => filteredHistory.reduce((sum, h) => sum + h.total, 0), [filteredHistory]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        setError(null);
-        const data = await transactionService.getHistory();
-
-        const mapped = data.map((tx) => {
-          const txId = tx.transaction_id || `TX-${String(tx.id).padStart(3, '0')}`;
-          const rawDate = tx.created_at || '';
-          const formattedDate = rawDate
-            ? rawDate.replace('T', ' ').replace(/\.\d+Z$/, '').substring(0, 16)
-            : '';
-          const totalQty = tx.items?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-
-          return {
-            id: tx.id,
-            transactionId: txId,
-            date: formattedDate,
-            mitraName: tx.mitra?.full_name || 'Tidak Diketahui',
-            items: totalQty,
-            rawItems: tx.items || [],
-            total: tx.total || 0,
-            paymentMethod: tx.metode_pembayaran || '-',
-            status: tx.status || '-',
-            paid: tx.paid || 0,
-            change: tx.change || 0,
-          };
-        });
-
-        setHistory(mapped);
-      } catch (err) {
-        setError(err.message || 'Gagal memuat riwayat transaksi');
-      }
-    })();
-  }, []);
+    loadTransactions();
+  }, [loadTransactions]);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, startDate, endDate, selectedPayment]);
 
-  const openReturnModal = (transaction) => {
+  const openReturnModal = async (transaction) => {
     setReturnModal({ open: true, transaction });
     setReturnItems({});
     setReturnReason('');
+    setReturnedQty({});
+
+    try {
+      const existing = await returnService.getByTransaction(transaction.id);
+      const totals = {};
+      (existing || []).forEach((row) => {
+        if (!row.transaction_item_id) return;
+        totals[row.transaction_item_id] = (totals[row.transaction_item_id] || 0) + (row.quantity || 0);
+      });
+      setReturnedQty(totals);
+    } catch {
+      showToast('Gagal memuat data retur sebelumnya', 'error');
+    }
+  };
+
+  const getReturnableQty = (item) => {
+    const sold = Number(item.quantity) || 0;
+    const alreadyReturned = returnedQty[item.id] || 0;
+    return Math.max(0, sold - alreadyReturned);
   };
 
   const handleReturnQuantityChange = (itemId, maxQty, value) => {
-    const qty = Math.max(1, Math.min(Number(value) || 0, maxQty));
+    const qty = Math.max(0, Math.min(Number(value) || 0, maxQty));
     setReturnItems((prev) => ({ ...prev, [itemId]: qty }));
   };
 
@@ -97,51 +124,74 @@ function TransactionHistory() {
 
     const itemsToReturn = Object.entries(returnItems)
       .filter(([_itemId, qty]) => qty > 0)
-      .map(([itemId, qty]) => ({ itemId, qty }));
+      .map(([itemId, qty]) => ({ itemId, qty: Number(qty) }));
 
     if (itemsToReturn.length === 0) {
       showToast('Pilih minimal satu item untuk diretur', 'error');
       return;
     }
 
+    const transaction = returnModal.transaction;
+    const details = itemsToReturn.map(({ itemId, qty }) => ({
+      item: transaction.rawItems.find((i) => i.id === itemId),
+      qty,
+      maxQty: getReturnableQty(transaction.rawItems.find((i) => i.id === itemId) || { quantity: 0 }),
+    }));
+
+    const invalid = details.find((d) => !d.item || d.qty > d.maxQty);
+    if (invalid) {
+      showToast(
+        invalid.item
+          ? `Jumlah retur melebihi sisa yang bisa diretur (${invalid.maxQty} pcs)`
+          : 'Item transaksi tidak ditemukan, muat ulang halaman',
+        'error'
+      );
+      return;
+    }
+
     setProcessingReturn(true);
     try {
-      for (const { itemId, qty } of itemsToReturn) {
-        const item = returnModal.transaction.rawItems.find((i) => i.id === itemId);
-        if (!item) continue;
-
+      for (const { item, qty } of details) {
         await returnService.create({
-          transaction_id: returnModal.transaction.id,
-          transaction_item_id: itemId,
+          transaction_id: transaction.id,
+          transaction_item_id: item.id,
           product_id: item.product_id,
           quantity: qty,
           reason: returnReason,
-          user_id: null,
+          user_id: user?.id || null,
         });
 
-        const newStock = (item.product?.stock || 0) + qty;
-        await productService.update(item.product_id, { stock: newStock });
+        const newStock = await productService.incrementStock(item.product_id, qty);
+        if (newStock === null) {
+          throw new Error(`Produk ${item.product?.nama_produk || item.product_id} tidak ditemukan`);
+        }
 
         await stockMovementService.create({
           type: 'in',
           product_id: item.product_id,
           quantity: qty,
-          note: `Retur #${returnModal.transaction.transactionId}`,
-          mitra_id: null,
+          note: `Retur #${transaction.transactionId}`,
+          mitra_id: transaction.mitraId || null,
         });
       }
 
+      await loadTransactions();
       showToast('Retur berhasil diproses', 'success');
       setReturnModal({ open: false, transaction: null });
       setReturnItems({});
       setReturnReason('');
-      loadTransactions();
-    } catch {
-      showToast('Gagal memproses retur', 'error');
+      setReturnedQty({});
+    } catch (err) {
+      const raw = err?.message || '';
+      if (/increment_product_stock|PGRST202|function.*does not exist/i.test(raw)) {
+        showToast('Fitur retur belum siap: jalankan scripts/atomic-stock-increment.sql di Supabase', 'error');
+      } else {
+        showToast(raw || 'Gagal memproses retur', 'error');
+      }
     } finally {
       setProcessingReturn(false);
     }
-   };
+  };
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full">
@@ -202,7 +252,7 @@ function TransactionHistory() {
               </div>
               <div>
                 <p className="font-label-md text-label-md text-on-surface-variant mb-1">Total Penjualan</p>
-                <p className="font-display-lg text-display-lg text-on-background tracking-tight">Rp {totalOmzet.toLocaleString('id-ID')}</p>
+                <p className="font-display-lg text-display-lg text-on-background tracking-tight">{loading ? '-' : `Rp ${totalOmzet.toLocaleString('id-ID')}`}</p>
               </div>
             </div>
 
@@ -219,6 +269,22 @@ function TransactionHistory() {
               </div>
             </div>
           </div>
+
+          {error && (
+            <div className="bg-error-container/20 border border-error/30 rounded-xl p-4 flex items-start gap-3">
+              <span className="material-symbols-outlined text-error">error</span>
+              <div className="flex-1">
+                <p className="font-label-md text-label-md text-error">Gagal memuat riwayat transaksi</p>
+                <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">{error}</p>
+              </div>
+              <button
+                onClick={loadTransactions}
+                className="h-9 px-3 rounded-lg border border-error/40 text-error font-label-md text-label-md hover:bg-error/10 transition-colors"
+              >
+                Coba Lagi
+              </button>
+            </div>
+          )}
 
           {/* Filters */}
           <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 shadow-sm">
@@ -277,10 +343,17 @@ function TransactionHistory() {
                <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Menampilkan {totalTransactions} transaksi</p>
             </div>
 
-             {paginatedHistory.length === 0 ? (
+             {loading && history.length === 0 ? (
+              <div className="p-12 text-center flex flex-col items-center gap-3">
+                <span className="material-symbols-outlined text-6xl text-primary animate-pulse">progress_activity</span>
+                <p className="font-body-md text-body-md text-on-surface-variant">Memuat riwayat transaksi...</p>
+              </div>
+            ) : paginatedHistory.length === 0 ? (
               <div className="p-12 text-center">
                 <span className="material-symbols-outlined text-6xl text-outline mb-3">receipt_long</span>
-                <p className="font-body-md text-body-md text-on-surface-variant">Tidak ada transaksi yang ditemukan</p>
+                <p className="font-body-md text-body-md text-on-surface-variant">
+                  {error ? 'Gagal memuat data transaksi' : 'Tidak ada transaksi yang ditemukan'}
+                </p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -330,8 +403,9 @@ function TransactionHistory() {
                           <div className="flex items-center justify-center gap-2">
                             <button
                               onClick={() => openReturnModal(h)}
-                              className="w-8 h-8 rounded-lg bg-tertiary-fixed/15 text-tertiary-container hover:bg-tertiary-fixed hover:text-on-tertiary-fixed flex items-center justify-center transition-all duration-200"
-                              title="Retur"
+                              disabled={h.status !== 'Selesai'}
+                              className="w-8 h-8 rounded-lg bg-tertiary-fixed/15 text-tertiary-container hover:bg-tertiary-fixed hover:text-on-tertiary-fixed flex items-center justify-center transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-tertiary-fixed/15 disabled:hover:text-tertiary-container"
+                              title={h.status === 'Selesai' ? 'Retur' : 'Hanya transaksi Selesai yang bisa diretur'}
                               aria-label="Retur transaksi"
                             >
                               <span className="material-symbols-outlined text-[18px]">undo</span>
@@ -412,28 +486,34 @@ function TransactionHistory() {
               </div>
               <div className="space-y-2">
                 <label className="font-label-md text-label-md text-on-surface block">Pilih Item</label>
-                {returnModal.transaction?.rawItems?.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50">
-                    <div className="flex-1">
-                      <p className="font-body-md text-body-md text-on-surface">{item.product?.nama_produk || 'Produk'}</p>
-                      <p className="font-label-sm text-label-sm text-on-surface-variant">
-                        Qty: {item.quantity} | Rp {(item.harga_satuan * item.quantity).toLocaleString('id-ID')}
-                      </p>
+                {returnModal.transaction?.rawItems?.map((item) => {
+                  const remaining = getReturnableQty(item);
+                  const alreadyReturned = returnedQty[item.id] || 0;
+                  return (
+                    <div key={item.id} className="flex items-center justify-between p-3 bg-surface-container-lowest rounded-lg border border-outline-variant/50">
+                      <div className="flex-1">
+                        <p className="font-body-md text-body-md text-on-surface">{item.product?.nama_produk || 'Produk'}</p>
+                        <p className="font-label-sm text-label-sm text-on-surface-variant">
+                          Qty: {item.quantity} | Rp {(item.harga_satuan * item.quantity).toLocaleString('id-ID')}
+                          {alreadyReturned > 0 && ` | Sudah diretur: ${alreadyReturned}`}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          max={remaining}
+                          disabled={remaining === 0}
+                          value={returnItems[item.id] || ''}
+                          onChange={(e) => handleReturnQuantityChange(item.id, remaining, e.target.value)}
+                          className="w-16 px-2 py-1 border border-outline-variant rounded-md text-center font-numeric-data text-numeric-data text-on-surface focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-40"
+                          placeholder="0"
+                        />
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">/ {remaining}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        max={item.quantity}
-                        value={returnItems[item.id] || ''}
-                        onChange={(e) => handleReturnQuantityChange(item.id, item.quantity, e.target.value)}
-                        className="w-16 px-2 py-1 border border-outline-variant rounded-md text-center font-numeric-data text-numeric-data text-on-surface focus:outline-none focus:ring-2 focus:ring-primary"
-                        placeholder="0"
-                      />
-                      <span className="font-label-sm text-label-sm text-on-surface-variant">/ {item.quantity}</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div className="flex gap-2 p-4 border-t border-outline-variant">
