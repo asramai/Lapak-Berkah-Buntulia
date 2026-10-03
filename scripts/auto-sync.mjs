@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const DEBOUNCE_MS = Number(process.env.AUTOSYNC_DEBOUNCE_MS || 8000);
-const REMOTE = process.env.AUTOSYNC_REMOTE || 'fork';
+const REMOTE = process.env.AUTOSYNC_REMOTE || 'origin';
 const DO_DEPLOY = !process.argv.includes('--no-deploy');
 const RUN_ONCE = process.argv.includes('--once');
 
