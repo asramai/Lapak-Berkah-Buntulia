@@ -112,12 +112,14 @@ async function syncOnce() {
     if (DO_DEPLOY) {
       log('deploy ke Vercel production, tunggu...');
       const deploy = await shell('vercel --prod --yes');
-      const aliased = (deploy.stdout.match(/Aliased\s+(https:\/\/\S+)/) || [])[1];
-      if (deploy.code === 0 && aliased) {
-        log(`deploy sukses: ${aliased}`);
+      const output = deploy.stdout + deploy.stderr;
+      const productionUrl = (output.match(/Aliased\s+(https:\/\/\S+)/) || [])[1]
+        || 'https://lapak-berkah-buntulia.vercel.app';
+      if (deploy.code === 0 && /Ready in|Deployment completed|✓ Ready/.test(output)) {
+        log(`deploy sukses: ${productionUrl}`);
       } else {
-        log('GAGAL: deploy Vercel');
-        log((deploy.stdout + deploy.stderr).split('\n').slice(-8).join('\n'));
+        log(`GAGAL: deploy Vercel (exit ${deploy.code})`);
+        log(output.split('\n').slice(-10).join('\n'));
       }
     }
   } catch (error) {
