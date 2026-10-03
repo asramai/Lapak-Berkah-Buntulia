@@ -938,6 +938,18 @@ export const paymentService = {
     return data?.[0] || null;
   },
 
+  // Kasir memanggil ini setelah memastikan uang QRIS benar-benar masuk.
+  // Pelaku dan waktu konfirmasi dicatat database, bukan dikirim dari peramban.
+  async konfirmasiQris(transactionId, paid) {
+    const { data, error } = await supabase.rpc('confirm_qris_payment', {
+      p_transaction_id: transactionId,
+      p_paid: Number(paid),
+    });
+
+    if (error) throw error;
+    return data?.[0] || null;
+  },
+
   async batalkan(transactionId, reason = null) {
     const { data, error } = await supabase.rpc('cancel_pending_transaction', {
       p_transaction_id: transactionId,

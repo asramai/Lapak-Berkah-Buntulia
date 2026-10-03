@@ -334,6 +334,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
   // tidak dikosongkan dan struk tidak dicetak.
   const [qrisPending, setQrisPending] = useState(null);
   const [sisaDetikQris, setSisaDetikQris] = useState(0);
+  const [mengonfirmasiQris, setMengonfirmasiQris] = useState(false);
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -629,11 +630,10 @@ function KasirDesktopCart({ user, isPosDesktop }) {
           transactionId: createdTransaction.id,
           total,
           mulai: Date.now(),
-          gatewayTerpasang: pesanan.gatewayTerpasang !== false,
-          qrPayload: pesanan.qrPayload || null,
-          pesan: pesanan.pesan || null,
+          manual: pesanan.manual === true,
+          dikonfirmasi: '',
         });
-        setToast({ message: 'Pesanan QRIS dibuat, menunggu pembayaran', type: 'success' });
+        setToast({ message: 'Pesanan QRIS dibuat, tunggu konfirmasi pembayaran', type: 'success' });
         return;
       }
 
@@ -855,31 +855,36 @@ function KasirDesktopCart({ user, isPosDesktop }) {
           {qrisPending && (
             <div className="space-y-3 rounded-2xl bg-surface-container p-4">
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-primary">hourglass_top</span>
-                <span className="font-label-lg text-label-lg text-on-surface">Menunggu pembayaran QRIS</span>
+                <span className="material-symbols-outlined text-primary">qr_code_scanner</span>
+                <span className="font-label-lg text-label-lg text-on-surface">Konfirmasi Pembayaran QRIS</span>
               </div>
 
-              {qrisPending.gatewayTerpasang ? (
-                qrisPending.qrPayload ? (
-                  <div className="flex flex-col items-center gap-3">
-                    {qrisPending.qrPayload}
-                    <p className="font-body-sm text-body-sm text-on-surface-variant text-center">
-                      Minta pelanggan memindai QR ini dari aplikasi e-wallet atau mobile banking-nya.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="font-body-sm text-body-sm text-on-surface-variant text-center py-6">
-                    Menunggu kode QR dari payment gateway...
+              <div className="rounded-xl bg-surface-container-high p-3">
+                <p className="font-label-sm text-label-sm text-on-surface-variant">Langkah kasir</p>
+                <ol className="mt-1 space-y-0.5 font-body-sm text-body-sm text-on-surface">
+                  <li>1. Minta pelanggan memindai QRIS statis toko</li>
+                  <li>2. Cek mutasi rekening atau aplikasi e-wallet Anda</li>
+                  <li>3. Masukkan nominal yang benar-benar masuk, lalu konfirmasi</li>
+                </ol>
+              </div>
+
+              <div>
+                <label className="block font-label-md text-label-md text-on-surface mb-1">
+                  Nominal yang diterima
+                </label>
+                <input
+                  type="number"
+                  value={qrisPending.dikonfirmasi || ''}
+                  onChange={(e) => setQrisPending((prev) => ({ ...prev, dikonfirmasi: e.target.value }))}
+                  placeholder={String(qrisPending.total)}
+                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-numeric-data text-numeric-data text-body-md"
+                />
+                {qrisPending.dikonfirmasi && Number(qrisPending.dikonfirmasi) < Number(qrisPending.total) && (
+                  <p className="mt-1 font-body-sm text-body-sm text-error">
+                    Nominal lebih kecil dari tagihan Rp {Number(qrisPending.total).toLocaleString('id-ID')}
                   </p>
-                )
-              ) : (
-                <div className="flex items-start gap-2 rounded-xl bg-error-container text-on-error-container p-3">
-                  <span className="material-symbols-outlined text-lg">warning</span>
-                  <span className="font-body-sm text-body-sm">
-                    {qrisPending.pesan || 'QRIS belum terhubung ke payment gateway.'}
-                  </span>
-                </div>
-              )}
+                )}
+              </div>
 
               <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
                 <span>Total tagihan</span>
@@ -888,30 +893,56 @@ function KasirDesktopCart({ user, isPosDesktop }) {
                 </span>
               </div>
               <div className="flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
-                <span>Batas pembayaran</span>
+                <span>Batas konfirmasi</span>
                 <span className="font-numeric-data text-numeric-data text-on-surface">
                   {Math.floor(sisaDetikQris / 60)}:{String(sisaDetikQris % 60).padStart(2, '0')}
                 </span>
               </div>
+
               <p className="font-body-xs text-body-xs text-on-surface-variant">
-                Transaksi baru berstatus Selesai dan struk boleh keluar setelah payment gateway
-                mengonfirmasi pembayaran. Kalau dibatalkan, stok otomatis dikembalikan.
+                Nama dan waktu konfirmasi Anda dicatat di riwayat, supaya bisa dicocokkan Owner
+                dengan mutasi rekening.
               </p>
-              <button
-                onClick={() => {
-                  paymentService.batalkan(qrisPending.transactionId, 'Dibatalkan kasir')
-                    .then(async () => {
-                      setQrisPending(null);
-                      setToast({ message: 'Pesanan dibatalkan, stok dikembalikan', type: 'success' });
-                      window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
-                      await loadProducts();
-                    })
-                    .catch((err) => setToast({ message: 'Gagal membatalkan: ' + (err?.message || ''), type: 'error' }));
-                }}
-                className="w-full h-10 rounded-xl border border-outline text-on-surface font-label-md text-label-md hover:bg-surface-container"
-              >
-                Batalkan Pesanan
-              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    paymentService.batalkan(qrisPending.transactionId, 'Dibatalkan kasir')
+                      .then(async () => {
+                        setQrisPending(null);
+                        setToast({ message: 'Pesanan dibatalkan, stok dikembalikan', type: 'success' });
+                        window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
+                        await loadProducts();
+                      })
+                      .catch((err) => setToast({ message: 'Gagal membatalkan: ' + (err?.message || ''), type: 'error' }));
+                  }}
+                  className="h-12 rounded-xl border border-outline text-on-surface font-label-md text-label-md hover:bg-surface-container-high"
+                >
+                  Batalkan
+                </button>
+                <button
+                  disabled={!qrisPending.dikonfirmasi || Number(qrisPending.dikonfirmasi) < Number(qrisPending.total) || mengonfirmasiQris}
+                  onClick={async () => {
+                    setMengonfirmasiQris(true);
+                    try {
+                      await paymentService.konfirmasiQris(qrisPending.transactionId, Number(qrisPending.dikonfirmasi));
+                      await finalisasiLunas({
+                        total: Number(qrisPending.total),
+                        paid: Number(qrisPending.dikonfirmasi),
+                        change: 0,
+                        paymentMethod: 'QRIS',
+                      });
+                    } catch (err) {
+                      setToast({ message: 'Gagal konfirmasi: ' + (err?.message || ''), type: 'error' });
+                    } finally {
+                      setMengonfirmasiQris(false);
+                    }
+                  }}
+                  className="h-12 rounded-xl bg-primary text-on-primary font-headline-sm text-headline-sm disabled:opacity-50"
+                >
+                  {mengonfirmasiQris ? 'Menyimpan...' : 'Konfirmasi Masuk'}
+                </button>
+              </div>
             </div>
           )}
 

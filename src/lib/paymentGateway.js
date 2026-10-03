@@ -46,28 +46,29 @@ export const tuneaiPayment = {
 };
 
 /**
- * Adapter QRIS yang belum tersambung ke gateway manapun.
+ * QRIS mode manual: kasir yang memastikan pembayaran masuk.
  *
- * Ini sengaja BUKAN meniru pembayaran sungguhan. Tujuannya supaya alur
- * pending -> lunas bisa dibangun dan diuji sebelum ada akun merchant, tanpa
- * pernah memberi ilusi bahwa uang benar-benar masuk.
+ * Ini bukan QRIS otomatis. Pelanggan membayar ke QRIS statis milik toko yang
+ * berasal dari rekening bank, lalu kasir cek mutasi rekening dan mengonfirmasi
+ * di aplikasi. Fungsinya hanya mencatat apa yang sudahdecided oleh kasir.
  *
- * Kalau dipakai sungguhan, transaksi akan tetap menggantung sampai kedaluwarsa
- * dan stoknya dikembalikan. Itu lebih baik daripada menandai lunat tanpa
- * pembayaran, karena itu justru bahaya yang ingin kita cegah.
+ * Yang perlu diketahui: mode ini tidak mencegah kecurangan. Yang ditawarkannya
+ * adalah jejak. Setiap konfirmasi menyimpan nama dan waktunya, jadi Owner bisa
+ * mencocokkannya dengan mutasi rekening setiap hari.
  */
-export const qrisTanpaGateway = {
+export const qrisManual = {
   metode: 'QRIS',
-  perluGateway: true,
-  nama: 'belum-ada-gateway',
+  perluGateway: false,
+  manual: true,
+  nama: 'manual',
 
   async mulai({ total, transactionId }) {
-    return { status: STATUS.menunggu, total, transactionId, gatewayTerpasang: false, qrPayload: null, pesan: 'QRIS belum terhubung ke payment gateway. Jalankan scripts/secure-payment-and-qris.sql lalu hubungkan adapter gateway.' };
+    return { status: STATUS.menunggu, total, transactionId, manual: true };
   },
 
   async cekStatus() {
-    // Tidak pernah melunas tanpa webhook dari gateway yang benar-benar membayar.
-    return { status: STATUS.menunggu, gatewayTerpasang: false };
+    // Menunggu konfirmasi kasir, bukan menunggu webhook.
+    return { status: STATUS.menunggu, manual: true };
   },
 };
 
@@ -104,7 +105,7 @@ export const STATUS_PEMBAYARAN = STATUS;
  */
 export function adapterUntuk(metode) {
   if (metode === 'Tunai') return tuneaiPayment;
-  if (metode === 'QRIS') return qrisTanpaGateway;
+  if (metode === 'QRIS') return qrisManual;
   throw new Error(`Metode pembayaran tidak dikenal: ${metode}`);
 }
 

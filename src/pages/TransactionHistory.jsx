@@ -57,6 +57,9 @@ function TransactionHistory({ user }) {
           rawItems: tx.items || [],
           total: tx.total || 0,
           paymentMethod: tx.metode_pembayaran || '-',
+      confirmedBy: tx.confirmed_by || null,
+      confirmedAt: tx.confirmed_at || null,
+      confirmedMethod: tx.confirmed_method || null,
           status: tx.status || '-',
           paid: tx.paid || 0,
           change: tx.change || 0,
@@ -462,6 +465,20 @@ function TransactionHistory({ user }) {
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-label-sm text-label-sm bg-surface-container text-on-surface-variant border border-outline-variant">
                             {h.paymentMethod}
                           </span>
+                          {h.paymentMethod === 'QRIS' && (
+                            <div className="mt-1 font-body-xs text-body-xs text-on-surface-variant">
+                              {h.confirmedBy ? (
+                                <>
+                                  oleh {h.confirmedBy}
+                                  {h.confirmedAt && (
+                                    <> · {new Date(h.confirmedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</>
+                                  )}
+                                </>
+                              ) : (
+                                'belum dikonfirmasi'
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-label-md text-label-sm bg-tertiary-fixed/15 text-tertiary-container border border-tertiary-fixed/30">
