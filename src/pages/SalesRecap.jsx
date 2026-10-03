@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
-import { transactionService, mitraService } from '../lib/services';
+import { useState, useEffect, useMemo } from 'react';
+import { transactionService, productService, returnService, mitraService } from '../lib/services';
+import { buildProfitRows, summarizeProfit } from '../lib/profitReport';
 
 function SalesRecap() {
   const [transactions, setTransactions] = useState([]);
+  const [returns, setReturns] = useState([]);
+  const [products, setProducts] = useState([]);
   const [mitraList, setMitraList] = useState(['Semua Mitra']);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
@@ -15,34 +18,19 @@ function SalesRecap() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const getLocalDate = (value) => {
-    const d = value instanceof Date ? value : new Date(value);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [txData, mitraData] = await Promise.all([
+        const [txData, returnData, productData, mitraData] = await Promise.all([
           transactionService.getHistory(),
+          returnService.getAll(),
+          productService.getAll(),
           mitraService.getAll(),
         ]);
 
-        const mapped = txData.map((tx) => ({
-          id: tx.id,
-          date: tx.created_at ? getLocalDate(tx.created_at) : '',
-          mitraName: tx.mitra?.full_name || '-',
-          productName: tx.items?.[0]?.product?.nama_produk || '-',
-          qty: tx.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-          total: tx.total || 0,
-          paymentMethod: tx.metode_pembayaran || '-',
-          status: tx.status || '-',
-        }));
-
-        setTransactions(mapped);
+        setTransactions(txData || []);
+        setReturns(returnData || []);
+        setProducts(productData || []);
         setMitraList(['Semua Mitra', ...mitraData.map((m) => m.full_name)]);
       } catch {
         showToast('Gagal memuat data penjualan', 'error');
@@ -54,14 +42,48 @@ function SalesRecap() {
     loadData();
   }, []);
 
-  const filteredTransactions = transactions.filter((t) => {
-    const matchesDate = (!startDate || t.date >= startDate) && (!endDate || t.date <= endDate);
-    const matchesMitra = selectedMitra === 'Semua Mitra' || t.mitraName === selectedMitra;
-    return matchesDate && matchesMitra;
-  });
+  // Satu sumber kalkulasi yang sama dengan Laporan Pembagian Keuntungan.
+  // Retur sudah dipotong, transaksi Dibatalkan tidak dihitung.
+  const profitRows = useMemo(
+    () => buildProfitRows({ transactions, returns, products, startDate, endDate }),
+    [transactions, returns, products, startDate, endDate]
+  );
 
-  const totalSales = filteredTransactions.reduce((sum, t) => sum + t.total, 0);
-  const totalQty = filteredTransactions.reduce((sum, t) => sum + t.qty, 0);
+  const filteredTransactions = useMemo(() => {
+    const grouped = new Map();
+    profitRows.forEach((row) => {
+      if (selectedMitra !== 'Semua Mitra' && row.mitraName !== selectedMitra) return;
+      const existing = grouped.get(row.transactionId) || {
+        id: row.transactionId,
+        date: row.date,
+        mitraName: row.mitraName,
+        produk: [],
+        qty: 0,
+        total: 0,
+        retur: 0,
+        paymentMethod: row.paymentMethod,
+        status: row.status,
+      };
+      if (!existing.produk.includes(row.productName)) existing.produk.push(row.productName);
+      existing.qty += row.netQty;
+      existing.total += row.totalSales;
+      existing.retur += row.returnedQty;
+      grouped.set(row.transactionId, existing);
+    });
+    return Array.from(grouped.values())
+      .map((entry) => ({ ...entry, productName: entry.produk.join(', ') }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [profitRows, selectedMitra]);
+
+  const summary = useMemo(() => {
+    const scoped = selectedMitra === 'Semua Mitra'
+      ? profitRows
+      : profitRows.filter((row) => row.mitraName === selectedMitra);
+    return summarizeProfit(scoped);
+  }, [profitRows, selectedMitra]);
+
+  const totalSales = summary.totalPenjualan;
+  const totalQty = summary.totalQty;
 
   const handleExportExcel = () => {
     const headers = ['No', 'Tanggal', 'Mitra', 'Produk', 'Qty', 'Total', 'Metode', 'Status'];
@@ -271,6 +293,37 @@ function SalesRecap() {
                 <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rata-rata Transaksi</p>
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">Rp {filteredTransactions.length > 0 ? Math.round(totalSales / filteredTransactions.length).toLocaleString('id-ID') : 0}</p>
               </div>
+            </div>
+          </div>
+
+          {/* Pembagian Mitra / Owner - angka ini sama persis dengan Laporan Pembagian Keuntungan */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+              <p className="font-label-md text-label-md text-on-surface-variant mb-1">Untuk Mitra</p>
+              <p className="font-headline-md text-headline-md text-on-background font-numeric-data text-numeric-data">
+                Rp {summary.untukMitra.toLocaleString('id-ID')}
+              </p>
+              <p className="font-label-sm text-label-sm text-on-surface-variant mt-1">
+                Harga mitra · {summary.porsiMitraPercent.toFixed(1)}%
+              </p>
+            </div>
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+              <p className="font-label-md text-label-md text-on-surface-variant mb-1">Untuk Owner</p>
+              <p className="font-headline-md text-headline-md text-primary font-numeric-data text-numeric-data">
+                Rp {summary.untukOwner.toLocaleString('id-ID')}
+              </p>
+              <p className="font-label-sm text-label-sm text-on-surface-variant mt-1">
+                Selisih harga jual - harga mitra · margin {summary.marginPercent.toFixed(1)}%
+              </p>
+            </div>
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-5 shadow-sm">
+              <p className="font-label-md text-label-md text-on-surface-variant mb-1">Item Terdiretur</p>
+              <p className="font-headline-md text-headline-md text-on-background font-numeric-data text-numeric-data">
+                {summary.totalRetur.toLocaleString('id-ID')}
+              </p>
+              <p className="font-label-sm text-label-sm text-on-surface-variant mt-1">
+                Sudah dipotong dari omzet di atas
+              </p>
             </div>
           </div>
 

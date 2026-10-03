@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { transactionService, returnService, productService, stockMovementService } from '../lib/services';
+import { buildProfitRows, summarizeProfit } from '../lib/profitReport';
 import { printReceipt as printReceiptBluetooth, printReturnReceiptBluetooth } from '../lib/bluetoothPrinter';
 import Pagination from '../components/Pagination';
 
 function TransactionHistory({ user }) {
   const [history, setHistory] = useState([]);
+  const [returnRows, setReturnRows] = useState([]);
+  const [products, setProducts] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,9 +32,13 @@ function TransactionHistory({ user }) {
     setLoading(true);
     try {
       setError(null);
-      const data = await transactionService.getHistory();
+      const [data, returnData, productData] = await Promise.all([
+        transactionService.getHistory(),
+        returnService.getAll(),
+        productService.getAll(),
+      ]);
 
-      const mapped = data.map((tx) => {
+      const mapped = (data || []).map((tx) => {
         const txId = tx.transaction_id || `TX-${String(tx.id).padStart(3, '0')}`;
         const rawDate = tx.created_at || '';
         const formattedDate = rawDate
@@ -56,6 +63,8 @@ function TransactionHistory({ user }) {
       });
 
       setHistory(mapped);
+      setReturnRows(returnData || []);
+      setProducts(productData || []);
     } catch (err) {
       setError(err.message || 'Gagal memuat riwayat transaksi');
     } finally {
@@ -78,8 +87,25 @@ function TransactionHistory({ user }) {
     return filteredHistory.slice(start, start + itemsPerPage);
   }, [filteredHistory, currentPage, itemsPerPage]);
 
+  // Omzet memakai modul kalkulasi yang sama dengan Laporan Pembagian Keuntungan,
+  // jadi angka di kartu ini dijamin sama dengan laporan.
+  const omzetRows = useMemo(() => {
+    const filterStart = startDate || '0000-01-01';
+    const filterEnd = endDate || '9999-12-31';
+    const rows = buildProfitRows({ transactions: history, returns: returnRows, products, startDate: filterStart, endDate: filterEnd });
+    const activeIds = new Set(filteredHistory.map((h) => h.id));
+    const scoped = rows.filter((r) => activeIds.has(r.transactionId));
+    const keyword = searchQuery.trim().toLowerCase();
+    const finalRows = !keyword
+      ? scoped
+      : scoped.filter(
+        (r) => r.mitraName.toLowerCase().includes(keyword) || (r.productName || '').toLowerCase().includes(keyword)
+      );
+    return summarizeProfit(finalRows);
+  }, [history, returnRows, products, startDate, endDate, filteredHistory, searchQuery]);
+
   const totalTransactions = filteredHistory.length;
-  const totalOmzet = useMemo(() => filteredHistory.reduce((sum, h) => sum + h.total, 0), [filteredHistory]);
+  const totalOmzet = omzetRows.totalPenjualan;
 
   useEffect(() => {
     loadTransactions();

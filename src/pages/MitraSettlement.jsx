@@ -352,7 +352,7 @@ function MitraSettlement({ user }) {
         <span class="font-bold">Rp ${((settlement.items || []).reduce((sum, item) => sum + (item.cost_price * item.quantity), 0)).toLocaleString('id-ID')}</span>
       </div>
       <div class="flex justify-between text-sm font-bold border-t border-double border-gray-400 pt-1 mt-1">
-        <span>Keuntungan:</span>
+        <span>Untuk Owner:</span>
         <span>Rp ${(settlement.total_profit || 0).toLocaleString('id-ID')}</span>
       </div>
     </div>
@@ -610,11 +610,11 @@ function MitraSettlement({ user }) {
                     <span className="font-semibold text-on-background">Rp {totals.totalAmount.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between font-body-md text-body-md">
-                    <span className="text-on-surface-variant">Total Modal</span>
+                    <span className="text-on-surface-variant">Untuk Mitra (Harga Mitra)</span>
                     <span className="font-semibold text-on-background">Rp {totals.totalCost.toLocaleString('id-ID')}</span>
                   </div>
                   <div className="flex justify-between font-headline-sm text-headline-sm">
-                    <span className="text-primary">Keuntungan</span>
+                    <span className="text-primary">Untuk Owner (Selisih)</span>
                     <span className="text-primary font-semibold">Rp {totals.totalProfit.toLocaleString('id-ID')}</span>
                   </div>
                 </div>
@@ -658,7 +658,7 @@ function MitraSettlement({ user }) {
                     {recap.totalInvoice} Invoice
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Jual</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Penjualan</p>
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">
                   Rp {recap.totalJual.toLocaleString('id-ID')}
                 </p>
@@ -673,7 +673,7 @@ function MitraSettlement({ user }) {
                     {recap.marginPercent.toFixed(1)}%
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Total Keuntungan</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Untuk Owner (Selisih)</p>
                 <p className="font-display-lg text-display-lg text-primary tracking-tight">
                   Rp {recap.totalKeuntungan.toLocaleString('id-ID')}
                 </p>
@@ -688,7 +688,7 @@ function MitraSettlement({ user }) {
                     {recap.totalQty.toLocaleString('id-ID')} Qty
                   </span>
                 </div>
-                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Total Modal</p>
+                <p className="font-label-md text-label-md text-on-surface-variant mb-1">Rekap Untuk Mitra (Harga Mitra)</p>
                 <p className="font-display-lg text-display-lg text-on-background tracking-tight">
                   Rp {recap.totalModal.toLocaleString('id-ID')}
                 </p>
@@ -793,7 +793,7 @@ function MitraSettlement({ user }) {
                     <th className="py-3 px-4">Tanggal</th>
                     <th className="py-3 px-4">Mitra</th>
                     <th className="py-3 px-4 text-right">Total Jual</th>
-                    <th className="py-3 px-4 text-right">Keuntungan</th>
+                    <th className="py-3 px-4 text-right">Untuk Owner</th>
                     <th className="py-3 px-4 text-center">Status</th>
                     <th className="py-3 px-4 text-center">Aksi</th>
                   </tr>
@@ -946,7 +946,7 @@ function MitraSettlement({ user }) {
                   <span className="font-bold">Rp {((selectedSettlement.items || []).reduce((sum, item) => sum + (item.cost_price * item.quantity), 0)).toLocaleString('id-ID')}</span>
                 </div>
                 <div className="flex justify-between text-lg font-bold border-t border-double border-gray-400 pt-2 mt-2">
-                  <span>Keuntungan:</span>
+                  <span>Untuk Owner:</span>
                   <span className="text-primary">Rp {(selectedSettlement.total_profit || 0).toLocaleString('id-ID')}</span>
                 </div>
               </div>

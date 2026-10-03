@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { buildProfitRows, summarizeProfit, getLocalDate } from './profitReport';
 
 export const authService = {
   async login(email, password, role) {
@@ -386,7 +387,10 @@ export const transactionService = {
         mitra:mitra_id (full_name),
         items:transaction_items (
           *,
-          product:product_id (nama_produk, sku, barcode_id, unit)
+          product:product_id (
+            nama_produk, sku, barcode_id, unit, mitra_id,
+            mitra:mitra_id (full_name)
+          )
         )
       `)
       .order('created_at', { ascending: false });
@@ -463,6 +467,25 @@ export const returnService = {
         product:product_id (nama_produk, sku, unit)
       `)
       .eq('transaction_id', transactionId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async getAll() {
+    const { data, error } = await supabase
+      .from('returns')
+      .select(`
+        id,
+        transaction_id,
+        transaction_item_id,
+        product_id,
+        quantity,
+        reason,
+        user_id,
+        created_at
+      `)
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -706,51 +729,44 @@ export const pendingStockValidationService = {
 };
 
 export const dashboardService = {
+  // Angka dashboard WAJIB lewat modul kalkulasi yang sama dengan laporan,
+  // supaya tidak ada perbedaan omzet antara dashboard dan laporan.
   async getTodayStats() {
-    const today = new Date().toISOString().split('T')[0];
+    // Tanggal lokal, bukan UTC. Dulu pakai toISOString() yang memakai tanggal
+    // UTC, sehingga setelah pukul 00:00 WIB dashboard masih menampilkan
+    // angka kemarin.
+    const today = getLocalDate(new Date());
 
-    const [txCountResult, txDataResult, mitraCountResult] = await Promise.all([
-      supabase
-        .from('transactions')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', today),
-      supabase
-        .from('transactions')
-        .select('id, total')
-        .gte('created_at', today),
+    const [transactionData, returnData, productData, mitraCountResult] = await Promise.all([
+      transactionService.getHistory(),
+      returnService.getAll(),
+      productService.getAll(),
       supabase
         .from('mitra')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'Aktif'),
     ]);
 
-    if (txCountResult.error) throw txCountResult.error;
-    if (txDataResult.error) throw txDataResult.error;
     if (mitraCountResult.error) throw mitraCountResult.error;
 
-    const totalTransactions = txCountResult.count || 0;
-    const transactions = txDataResult.data || [];
-    const totalSales = transactions.reduce((sum, t) => sum + (t.total || 0), 0);
-    const activeMitra = mitraCountResult.count || 0;
-
-    const transactionIds = transactions.map(t => t.id);
-    let totalItems = 0;
-
-    if (transactionIds.length > 0) {
-      const { count: itemCount, error: itemError } = await supabase
-        .from('transaction_items')
-        .select('*', { count: 'exact', head: true })
-        .in('transaction_id', transactionIds);
-
-      if (itemError) throw itemError;
-      totalItems = itemCount || 0;
-    }
+    const rows = buildProfitRows({
+      transactions: transactionData || [],
+      returns: returnData || [],
+      products: productData || [],
+      startDate: today,
+      endDate: today,
+    });
+    const summary = summarizeProfit(rows);
 
     return {
-      totalTransactions,
-      totalSales,
-      totalItems,
-      activeMitra,
+      totalTransactions: summary.totalTransaksi,
+      totalSales: summary.totalPenjualan,
+      totalItems: summary.totalQty,
+      totalReturned: summary.totalRetur,
+      untukMitra: summary.untukMitra,
+      untukOwner: summary.untukOwner,
+      activeMitra: mitraCountResult.count || 0,
+      date: today,
     };
   },
 };

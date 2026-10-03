@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { dashboardService, transactionService, productService } from '../lib/services';
 
 function Dashboard({ setLowStockCount }) {
@@ -13,11 +13,7 @@ function Dashboard({ setLowStockCount }) {
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     try {
       const [statsData, transactionsData, lowStockData] = await Promise.all([
         dashboardService.getTodayStats(),
@@ -25,16 +21,29 @@ function Dashboard({ setLowStockCount }) {
         productService.getLowStock(10),
       ]);
 
-      setStats(statsData);
-      setTodayTransactions(transactionsData.slice(0, 10).map(t => ({
-        id: t.id,
-        time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-        productName: t.items?.[0]?.product?.nama_produk || '-',
-        qty: t.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-        total: t.total,
-        paymentMethod: t.metode_pembayaran || '-',
-        mitraName: t.mitra?.full_name || '-',
-      })));
+      setStats({
+        totalTransactions: 0,
+        totalSales: 0,
+        totalItems: 0,
+        activeMitra: 0,
+        ...statsData,
+      });
+      // Hanya transaksi selesai yang ditampilkan. Dulu transaksi Dibatalkan
+      // ikut muncul di daftar terakhir walau tidak masuk hitungan omzet.
+      setTodayTransactions(
+        (transactionsData || [])
+          .filter((t) => t.status === 'Selesai')
+          .slice(0, 10)
+          .map((t) => ({
+            id: t.id,
+            time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+            productName: t.items?.[0]?.product?.nama_produk || '-',
+            qty: t.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
+            total: t.total,
+            paymentMethod: t.metode_pembayaran || '-',
+            mitraName: t.mitra?.full_name || '-',
+          }))
+      );
       setLowStockProducts(lowStockData);
       if (setLowStockCount) {
         setLowStockCount(lowStockData.length);
@@ -44,7 +53,11 @@ function Dashboard({ setLowStockCount }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setLowStockCount]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   return (
     /* Perbaikan di sini: Pastikan flex-1 mengisi sisa ruang secara otomatis tanpa paksaan margin md:ml-72 yang sering bikin geser */
@@ -133,6 +146,31 @@ function Dashboard({ setLowStockCount }) {
                 <p className="text-xs font-medium text-slate-500 mb-1">Mitra Aktif</p>
                 <p className="text-2xl font-bold text-slate-900 tracking-tight">{loading ? '-' : stats.activeMitra}</p>
               </div>
+            </div>
+          </div>
+
+          {/* Pembagian Mitra / Owner - angka sama persis dengan Laporan Pembagian Keuntungan */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-medium text-slate-500 mb-1">Untuk Mitra (harga mitra)</p>
+              <p className="text-xl font-bold text-slate-700 tracking-tight">
+                Rp {loading ? '-' : (stats.untukMitra || 0).toLocaleString('id-ID')}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1">Harga yang ditetapkan mitra × qty</p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-medium text-slate-500 mb-1">Untuk Owner (selisih)</p>
+              <p className="text-xl font-bold text-blue-600 tracking-tight">
+                Rp {loading ? '-' : (stats.untukOwner || 0).toLocaleString('id-ID')}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1">Harga jual dikurangi harga mitra</p>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <p className="text-xs font-medium text-slate-500 mb-1">Barang diretur hari ini</p>
+              <p className="text-xl font-bold text-slate-700 tracking-tight">
+                {loading ? '-' : (stats.totalReturned || 0)}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1">Sudah dipotong dari omzet di atas</p>
             </div>
           </div>
 

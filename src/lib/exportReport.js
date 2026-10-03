@@ -29,7 +29,7 @@ const buildCell = (value, { bold, money, align } = {}) => {
   return `<Cell${styleAttr}><Data ss:Type="String">${escapeXml(value)}</Data></Cell>`;
 };
 
-export function buildSpreadsheetXml({ sheetName = 'Laporan', title, subtitle, headers, rows, summary }) {
+const buildWorksheet = ({ sheetName = 'Laporan', title, subtitle, headers = [], rows = [], summary = [] }, index) => {
   const headerCells = headers.map((h) => buildCell(h, { bold: true })).join('');
 
   const bodyRows = rows
@@ -62,15 +62,23 @@ export function buildSpreadsheetXml({ sheetName = 'Laporan', title, subtitle, he
   const subtitleRow = subtitle
     ? `<Row><Cell><Data ss:Type="String">${escapeXml(subtitle)}</Data></Cell></Row>`
     : '';
-  const blankRow = '<Row/>';
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-  xmlns:o="urn:schemas-microsoft-com:office:office"
-  xmlns:x="urn:schemas-microsoft-com:office:excel"
-  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-  <Styles>
+  // Baris kosong hanya di sheet pertama supaya sheet lain tidak bergeser.
+  const gap = index === 0 ? '<Row/>' : '';
+
+  return `  <Worksheet ss:Name="${escapeXml(sheetName)}">
+    <Table>
+      ${titleRow}
+      ${subtitleRow}
+      ${gap}
+      <Row>${headerCells}</Row>
+      ${bodyRows}
+      ${summaryRows ? `<Row/>${summaryRows}` : ''}
+    </Table>
+  </Worksheet>`;
+};
+
+const STYLES = `  <Styles>
     <Style ss:ID="Default" ss:Name="Normal">
       <Alignment ss:Vertical="Bottom"/>
       <Font ss:FontName="Calibri" ss:Size="11"/>
@@ -95,18 +103,26 @@ export function buildSpreadsheetXml({ sheetName = 'Laporan', title, subtitle, he
       <Font ss:FontName="Calibri" ss:Size="11" ss:Bold="1"/>
       <Borders><Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1"/></Borders>
     </Style>
-  </Styles>
-  <Worksheet ss:Name="${escapeXml(sheetName)}">
-    <Table>
-      ${titleRow}
-      ${subtitleRow}
-      ${blankRow}
-      <Row>${headerCells}</Row>
-      ${bodyRows}
-      ${blankRow}
-      ${summaryRows}
-    </Table>
-  </Worksheet>
+  </Styles>`;
+
+/**
+ * Menerima satu konfigurasi sheet, atau `multiSheet: [config, ...]`.
+ */
+export function buildSpreadsheetXml(config) {
+  const sheets = Array.isArray(config.multiSheet)
+    ? config.multiSheet
+    : [{ sheetName: config.sheetName, ...config }];
+
+  const worksheets = sheets.map((sheet, index) => buildWorksheet(sheet, index)).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+  xmlns:o="urn:schemas-microsoft-com:office:office"
+  xmlns:x="urn:schemas-microsoft-com:office:excel"
+  xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+${STYLES}
+${worksheets}
 </Workbook>`;
 }
 

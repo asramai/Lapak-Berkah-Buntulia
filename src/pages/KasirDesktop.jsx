@@ -393,6 +393,7 @@ function KasirDesktopCart({ user, isPosDesktop }) {
                 sku: product.sku,
                 barcodeId: product.barcodeId,
                 sellingPrice: product.sellingPrice,
+                mitraPrice: product.mitraPrice,
                 unit: product.unit,
                 mitraId: product.mitraId,
                 currentStock: product.stock,
@@ -483,6 +484,9 @@ function KasirDesktopCart({ user, isPosDesktop }) {
         product_id: item.productId,
         quantity: item.qty,
         harga_satuan: item.sellingPrice,
+        // Snapshot harga mitra saat penjualan. Tanpa ini, laporan laba untuk
+        // bulan lalu akan ikut berubah begitu harga mitra diedit.
+        cost_price: Number(item.mitraPrice) || 0,
         subtotal: item.sellingPrice * item.qty,
       }));
 

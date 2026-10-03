@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { mitraService, productService, pendingStockValidationService, stockMovementService, transactionService, userService } from '../lib/services';
+import { mitraService, productService, pendingStockValidationService, stockMovementService, transactionService, returnService, userService } from '../lib/services';
+import { buildProfitRows } from '../lib/profitReport';
 import Pagination from '../components/Pagination';
 import compressImage from '../utils/compressImage';
 
@@ -57,6 +58,8 @@ function MitraDashboard({ role, user }) {
   const [stockInputs, setStockInputs] = useState([]);
   const [stockHistory, setStockHistory] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [returnRows, setReturnRows] = useState([]);
+  const [rawProducts, setRawProducts] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState(null);
   const [showStockForm, setShowStockForm] = useState(false);
@@ -109,12 +112,13 @@ function MitraDashboard({ role, user }) {
 
   const loadData = async () => {
     try {
-      const [allMitraData, productData, pendingStockData, stockHistoryData, txData] = await Promise.all([
+      const [allMitraData, productData, pendingStockData, stockHistoryData, txData, returnData] = await Promise.all([
         mitraService.getAll(),
         productService.getAll(),
         pendingStockValidationService.getAll(),
         pendingStockValidationService.getAllHistory(),
         transactionService.getHistory(),
+        returnService.getAll(),
       ]);
 
       const mappedMitra = (allMitraData || []).map((m) => ({
@@ -179,19 +183,13 @@ function MitraDashboard({ role, user }) {
         };
       });
 
-      const mappedTx = (txData || []).map((tx) => ({
-        id: tx.id,
-        date: tx.created_at ? getLocalDate(tx.created_at) : '',
-        mitraId: tx.mitra_id,
-        total: tx.total || 0,
-        items: tx.items || [],
-      }));
-
       setAllMitra(mappedMitra);
       setProducts(mappedProducts);
       setStockInputs(mappedPendingStock);
       setStockHistory(mappedStockHistory);
-      setTransactions(mappedTx);
+      setTransactions(txData || []);
+      setReturnRows(returnData || []);
+      setRawProducts(productData || []);
     } catch {
       setToast({ message: 'Gagal memuat data dashboard', type: 'error' });
     }
@@ -230,14 +228,8 @@ function MitraDashboard({ role, user }) {
     return tx.date === today && String(tx.mitraId) === mitraIdNum;
   }), [transactions, isMitra, today, mitraIdNum]);
 
-  const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.total, 0), [todayTransactions]);
+const todayOmzet = useMemo(() => todayTransactions.reduce((sum, tx) => sum + tx.total, 0), [todayTransactions]);
   const todayTransactionCount = useMemo(() => todayTransactions.length, [todayTransactions]);
-
-  const productMap = useMemo(() => {
-    const map = new Map();
-    products.forEach((p) => map.set(p.id, p));
-    return map;
-  }, [products]);
 
   const todayStock = stockHistory.filter((s) => s.date === stockDate);
   const filteredTodayStock = useMemo(() => {
@@ -267,45 +259,53 @@ function MitraDashboard({ role, user }) {
   }, [isMitra]);
 
   const profitHistory = useMemo(() => {
-    let filtered = transactions;
-
-    if (isMitra) {
-      filtered = filtered.filter((tx) => tx.mitraId === mitraIdNum);
-    }
-
-    if (profitStartDate) {
-      filtered = filtered.filter((tx) => tx.date >= profitStartDate);
-    }
-    if (profitEndDate) {
-      filtered = filtered.filter((tx) => tx.date <= profitEndDate);
-    }
-    if (profitMonth) {
-      filtered = filtered.filter((tx) => tx.date.startsWith(profitMonth));
-    }
-
-    const dailyMap = new Map();
-    filtered.forEach((tx) => {
-      const items = tx.items || [];
-      const profit = items.reduce((sum, item) => {
-        const product = productMap.get(item.product_id);
-        const cost = product ? product.mitraPrice : 0;
-        const revenue = item.harga_satuan || 0;
-        return sum + (revenue - cost) * item.quantity;
-      }, 0);
-
-      const existing = dailyMap.get(tx.date) || { date: tx.date, omzet: 0, modal: 0, profit: 0, count: 0 };
-      existing.omzet += tx.total;
-      existing.modal += items.reduce((sum, item) => {
-        const product = productMap.get(item.product_id);
-        return sum + (product ? product.mitraPrice : 0) * item.quantity;
-      }, 0);
-      existing.profit += profit;
-      existing.count += 1;
-      dailyMap.set(tx.date, existing);
+    // Baris dihitung oleh modul kalkulasi yang sama dengan halaman laporan,
+    // supaya kartu di sini tidak pernah beda dengan Laporan Pembagian Keuntungan.
+    let rows = buildProfitRows({
+      transactions,
+      returns: returnRows,
+      products: rawProducts,
+      startDate: profitStartDate,
+      endDate: profitEndDate,
     });
 
-    return Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
-  }, [transactions, productMap, isMitra, mitraIdNum, profitMonth, profitStartDate, profitEndDate]);
+    if (isMitra && mitraIdNum) {
+      rows = rows.filter((r) => String(r.mitraId) === String(mitraIdNum));
+    }
+    if (profitMonth) {
+      rows = rows.filter((r) => r.date.startsWith(profitMonth));
+    }
+
+    const grouped = new Map();
+    rows.forEach((row) => {
+      const existing = grouped.get(row.date) || {
+        date: row.date,
+        omzet: 0,
+        untukMitra: 0,
+        untukOwner: 0,
+        qty: 0,
+        count: 0,
+        set: new Set(),
+      };
+      existing.omzet += row.totalSales;
+      existing.untukMitra += row.untukMitra;
+      existing.untukOwner += row.untukOwner;
+      existing.qty += row.netQty;
+      existing.set.add(row.transactionId);
+      grouped.set(row.date, existing);
+    });
+
+    return Array.from(grouped.values())
+      .map((entry) => ({
+        date: entry.date,
+        omzet: entry.omzet,
+        modal: entry.untukMitra,
+        profit: entry.untukOwner,
+        qty: entry.qty,
+        count: entry.set.size,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [transactions, returnRows, rawProducts, isMitra, mitraIdNum, profitMonth, profitStartDate, profitEndDate]);
 
   const totalProfit = profitHistory.reduce((sum, row) => sum + row.profit, 0);
   const totalOmzetFiltered = profitHistory.reduce((sum, row) => sum + row.omzet, 0);
