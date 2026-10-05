@@ -66,6 +66,12 @@ function StockManagement() {
           note: m.note,
           reason: m.reason,
           mitraName: m.mitra?.full_name,
+          // dicatat. Kalau ada pengaju, berarti lewat pengajuan
+          // mitra yang sudah divalidasi admin. Kalau tidak ada, berarti
+          // dicatat langsung oleh admin dari menu ini.
+          pengajuNama: m.pengaju?.nama || null,
+          dicatatOleh: m.pengaju?.nama || m.mitra?.full_name || 'Admin',
+          viaPengajuan: Boolean(m.pengaju),
         })),
       );
     } catch {
@@ -143,8 +149,8 @@ function StockManagement() {
   // transaksi. Dulu pergerakannya ditulis lebih dulu, jadi stok keluar yang
   // melebihi stok meninggalkan riwayat yang menyatakan barang keluar padahal
   // stoknya tidak pernah berkurang.
-  const catatStok = async ({ productId, type, quantity, note, mitraId }) => {
-    await stockMovementService.catat({ productId, type, quantity, note, mitraId });
+  const catatStok = async ({ productId, type, quantity, note, mitraId, reason = null }) => {
+    await stockMovementService.catat({ productId, type, quantity, note, mitraId, reason });
     window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
   };
 
@@ -184,21 +190,27 @@ function StockManagement() {
     if (!product) return;
 
     try {
-await stockMovementService.validate(validationId);
+      // Nama servicenya pendingStockValidationService, bukan
+      // stockMovementService. Salah nama membuat fungsi ini selalu gagal
+      // dengan "Gagal memvalidasi stok" tanpa pernah mengubah apa pun.
+      await pendingStockValidationService.validate(validationId);
 
       await catatStok({
         productId: validation.productId,
-        type: 'in',
+        // Menghormati jenis pengajuan. Selama ini selalu 'in' walau pengajuan
+        // sudah bisa berupa penarikan barang.
+        type: validation.type || 'in',
         quantity: validation.quantity,
         note: validation.note,
         mitraId: validation.mitraId ? String(validation.mitraId) : null,
+        reason: (validation.type || 'in') === 'out' ? validation.reason : null,
       });
       showToast('Stok berhasil divalidasi!', 'success');
       await loadProducts();
       await loadMovements();
       await loadValidations();
-    } catch {
-      showToast('Gagal memvalidasi stok', 'error');
+    } catch (err) {
+      showToast(err?.message || 'Gagal memvalidasi stok', 'error');
     }
   };
 
@@ -351,7 +363,7 @@ await stockMovementService.validate(validationId);
                     <thead>
                       <tr className="bg-surface-container-low border-b border-outline-variant">
                         <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Tanggal</th>
-                        <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Mitra</th>
+<th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Mitra &amp; Sumber</th>
                         <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Produk</th>
                         <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-right">Jumlah</th>
                         <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider font-semibold text-left">Catatan</th>
@@ -672,6 +684,11 @@ await stockMovementService.validate(validationId);
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-body-sm text-body-sm text-on-surface">{movement.mitraName}</span>
+                            <div className="font-body-sm text-body-sm text-on-surface-variant">
+                              {movement.viaPengajuan
+                                ? `via pengajuan, divalidasi ${movement.dicatatOleh}`
+                                : 'dicatat admin langsung'}
+                            </div>
                           </td>
                           <td className="px-6 py-4">
                             {movement.type === 'out' && movement.reason ? (

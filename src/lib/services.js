@@ -677,7 +677,7 @@ export const stockMovementService = {
   async getAll(filters = {}, { limit, offset } = {}) {
     let query = supabase
       .from('stock_movements')
-      .select('id, product_id, type, quantity, note, mitra_id, reason, created_at, product:product_id (nama_produk, unit), mitra:mitra_id (full_name)')
+      .select('id, product_id, type, quantity, note, mitra_id, reason, created_at, user_id, product:product_id (nama_produk, unit), mitra:mitra_id (full_name), pengaju:user_id (nama, email)')
       .order('created_at', { ascending: false });
 
     if (filters.type) query = query.eq('type', filters.type);
