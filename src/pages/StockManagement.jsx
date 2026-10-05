@@ -20,6 +20,7 @@ function StockManagement() {
   const [valEndDate, setValEndDate] = useState('');
   const [valMitra, setValMitra] = useState('Semua');
   const [formData, setFormData] = useState({ type: 'in', productId: '', quantity: '', note: '', reason: '' });
+  const [cariProduk, setCariProduk] = useState('');
   const [toast, setToast] = useState(null);
   const [movementPage, setMovementPage] = useState(1);
   const [validationPage, setValidationPage] = useState(1);
@@ -66,12 +67,12 @@ function StockManagement() {
           note: m.note,
           reason: m.reason,
           mitraName: m.mitra?.full_name,
-          // dicatat. Kalau ada pengaju, berarti lewat pengajuan
-          // mitra yang sudah divalidasi admin. Kalau tidak ada, berarti
-          // dicatat langsung oleh admin dari menu ini.
-          pengajuNama: m.pengaju?.nama || null,
-          dicatatOleh: m.pengaju?.nama || m.mitra?.full_name || 'Admin',
-          viaPengajuan: Boolean(m.pengaju),
+          // stock_movements tidak punya kolom user_id, jadi pelakunya tidak
+          // bisa diambil dari tabel itu. Yang bisa ditunjukkan adalah mitranya
+          // dan apakah barang masuk atau keluar. Pergerakan dari pengajuan
+          // mitra selalu punya mitra_id, sedangkan yang dicatat admin langsung
+          // juga punya karena diambil dari produk. Ditandai lewat catatan saja.
+          viaPengajuan: /pengajuan|validasi/i.test(m.note || ''),
         })),
       );
     } catch {
@@ -115,6 +116,20 @@ function StockManagement() {
 
   const totalMovements = filteredMovements.length;
   const alasanRingkas = useMemo(() => ringkasanAlasan(stockMovements), [stockMovements]);
+
+  // Daftar produk diurutkan abjad dan bisa dicari lewat nama produk atau nama
+  // mitra. Daftar produknya lebih dari seratus item, jadi tanpa pencarian dan
+  // urutan abjad, memilih produk jadi sulit.
+  const daftarProdukTersaring = useMemo(() => {
+    const abjad = [...productsList].sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), 'id', { sensitivity: 'base' }));
+    const keyword = cariProduk.trim().toLowerCase();
+    if (!keyword) return abjad;
+    return abjad.filter((p) =>
+      String(p.name || '').toLowerCase().includes(keyword)
+      || String(p.sku || '').toLowerCase().includes(keyword)
+      || String(p.mitraName || '').toLowerCase().includes(keyword));
+  }, [productsList, cariProduk]);
 
   const filteredPendingValidations = useMemo(() => {
     return pendingValidations.filter((v) => {
@@ -172,6 +187,7 @@ function StockManagement() {
         reason: formData.type === 'out' ? formData.reason : null,
       });
       setFormData({ type: 'in', productId: '', quantity: '', note: '', reason: '' });
+      setCariProduk('');
       setShowForm(false);
       showToast('Transaksi stok berhasil disimpan!', 'success');
       await loadProducts();
@@ -489,9 +505,39 @@ function StockManagement() {
                     </div>
                   )}
 
-                  {/* Produk */}
-                  <div className="space-y-2">
+                  {/* Produk. Daftar diurutkan abjad dan bisa dicari lewat kotak pencarian,
+                      karena daftar produknya sudah lebih dari seratus item. */}
+                  <div className="space-y-2 md:col-span-2">
                     <label className="block font-label-md text-label-md text-on-surface font-medium">Produk</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
+                        <span className="material-symbols-outlined text-[20px]">search</span>
+                      </div>
+                      <input
+                        type="text"
+                        value={cariProduk}
+                        onChange={(e) => setCariProduk(e.target.value)}
+                        placeholder="Cari nama produk atau nama mitra..."
+                        className="w-full h-11 pl-12 pr-4 rounded-xl border border-outline bg-surface-container-lowest focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
+                      />
+                      {cariProduk && (
+                        <button
+                          type="button"
+                          onClick={() => setCariProduk('')}
+                          className="absolute inset-y-0 right-0 pr-4 flex items-center text-outline hover:text-on-surface"
+                          aria-label="Bersihkan pencarian"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">close</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {cariProduk && (
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">
+                        {daftarProdukTersaring.length} dari {productsList.length} produk cocok
+                      </p>
+                    )}
+
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
                         <span className="material-symbols-outlined text-[20px]">shopping_bag</span>
@@ -503,9 +549,9 @@ function StockManagement() {
                         required
                       >
                         <option value="">Pilih Produk</option>
-                        {productsList.map((p) => (
+                        {daftarProdukTersaring.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.name} (Stok: {p.stock} {p.unit})
+                            {p.name} — {p.mitraName || 'Tanpa mitra'} (Stok: {p.stock} {p.unit})
                           </option>
                         ))}
                       </select>
@@ -513,6 +559,12 @@ function StockManagement() {
                         <span className="material-symbols-outlined text-[20px]">arrow_drop_down</span>
                       </div>
                     </div>
+
+                    {cariProduk && daftarProdukTersaring.length === 0 && (
+                      <p className="font-body-sm text-body-sm text-error">
+                        Tidak ada produk yang cocok dengan &quot;{cariProduk}&quot;.
+                      </p>
+                    )}
                   </div>
 
                   {/* Jumlah */}
@@ -683,11 +735,9 @@ function StockManagement() {
                             </span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className="font-body-sm text-body-sm text-on-surface">{movement.mitraName}</span>
+                            <span className="font-body-sm text-body-sm text-on-surface">{movement.mitraName || '-'}</span>
                             <div className="font-body-sm text-body-sm text-on-surface-variant">
-                              {movement.viaPengajuan
-                                ? `via pengajuan, divalidasi ${movement.dicatatOleh}`
-                                : 'dicatat admin langsung'}
+                              {movement.viaPengajuan ? 'lewat pengajuan mitra' : 'dicatat admin'}
                             </div>
                           </td>
                           <td className="px-6 py-4">
