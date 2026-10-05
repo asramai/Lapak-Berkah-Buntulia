@@ -23,7 +23,7 @@
 --   mati. Dua fitur itu tidak bisa dipenuhi sekaligus oleh satu policy.
 --
 --   Yang dipilih: buka akses UPDATE untuk tiga tabel ini, seperti desain
--awal. Hapus sudah tidak merusak data karena soft delete, dan jejakanya
+--   awal. Hapus sudah tidak merusak data karena soft delete, dan jejaknya
 --   tercatat di audit_log. Yang tetap dikunci adalah tabel pembayaran.
 --
 -- YANG TETAP TERKUNCI:
