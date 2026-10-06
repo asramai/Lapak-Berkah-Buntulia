@@ -1,6 +1,5 @@
 ﻿import { useState, useEffect, useMemo } from 'react';
 import { userService } from '../lib/services';
-import { showToast } from '../utils/toast';
 
 const ROLE_LABELS = {
   owner: 'Owner',
@@ -31,6 +30,12 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState('semua');
   const [deletingId, setDeletingId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const loadUsers = async () => {
     setLoading(true);
@@ -357,7 +362,7 @@ export default function UserManagement() {
                     <input
                       type="password"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value))
+                      onChange={(e) => setPassword(e.target.value)}
                       placeholder={editingUser ? 'Kosongkan jika tidak diubah' : 'Minimal 6 karakter'}
                       className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
                       required={!editingUser}
@@ -372,7 +377,7 @@ export default function UserManagement() {
                     <input
                       type="password"
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value))
+                      onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Ulangi kata sandi"
                       className="w-full h-10 px-3 rounded-lg border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md"
                       required={!editingUser}
@@ -425,17 +430,26 @@ export default function UserManagement() {
                 </div>
               </div>
             )}
-          </>
-        </div>
-      </main>
+          </div>
+        </main>
       <footer>
         <div className="flex-1 overflow-y-auto pb-24 md:pb-8">
           <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8 space-y-6">
           </div>
-        </footer>
-      </div>
+        </div>
+      </footer>
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm flex items-center gap-2 animate-bounce ${
+          toast.type === 'error'
+            ? 'bg-error-container text-error border-error/30'
+            : 'bg-success-container text-success border-success/30'
+        }`}>
+          <span className="material-symbols-outlined text-[18px]">
+            {toast.type === 'error' ? 'error' : 'check_circle'}
+          </span>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
-
-export default UserManagement;
