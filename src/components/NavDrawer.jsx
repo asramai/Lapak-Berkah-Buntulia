@@ -10,6 +10,7 @@ const navItems = [
   { icon: 'swap_vert', label: 'Manajemen Stok', page: 'stock-management', roles: ['admin', 'kasir'] },
   { icon: 'payments', label: 'Financial Reports', page: 'financial', roles: ['admin'] },
   { icon: 'history_toggle_off', label: 'Audit Log', page: 'audit-log', roles: ['admin'] },
+  { icon: 'manage_accounts', label: 'Manajemen Pengguna', page: 'user-management', roles: ['admin'] },
 ];
 
 function NavDrawer({ activePage, onNavigate, onLogout, role }) {
