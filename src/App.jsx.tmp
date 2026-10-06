@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import TopAppBar from './components/TopAppBar';
 import NavDrawer from './components/NavDrawer';
 import BottomNav from './components/BottomNav';
@@ -131,7 +131,7 @@ function App() {
     if (!role || accessiblePages.includes(targetPage)) {
       setPage(targetPage);
     }
-  }
+  };
 
   const isPosDesktop = page === 'pos-desktop';
   const isPos = page === 'pos' || isPosDesktop;
@@ -183,7 +183,6 @@ function App() {
             {page === 'inventory' && <Inventory />}
             {page === 'transaction-history' && <TransactionHistory user={user} />}
             {page === 'stock-management' && <StockManagement user={user} />}
-            {page === 'user-management' && <UserManagement />}
             {page === 'product' && <ProductManagement />}
             {page === 'mitra-settlement' && <MitraSettlement user={user} />}
             {page === 'pos' && <KasirHP onNavigate={navigateTo} />}

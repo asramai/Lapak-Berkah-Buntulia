@@ -49,6 +49,47 @@ export const userService = {
     if (error) throw error;
     return true;
   },
+
+  // Ambil semua user untuk manajemen akun (Owner, Mitra, Kasir)
+  async getAll() {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, nama, email, role, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  // Update user (nama, email, role, password)
+  async update(id, updates) {
+    const { data, error } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', id)
+      .select('id, nama, email, role, created_at')
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Hapus user
+  async delete(id) {
+    const { error } = await supabase
+      .from('users')
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+    return true;
+  },
+
+  // Toggle status aktif/tidak aktif (via role atau kolom tambahan jika ada)
+  // Untuk sekarang kita gunakan role sebagai indikator, bisa ditambah kolom is_active jika perlu
+  async toggleStatus(id, newRole) {
+    return this.update(id, { role: newRole });
+  },
 };
 
 export const productService = {
@@ -647,7 +688,7 @@ export const stockMovementService = {
   // Dulu keduanya dua permintaan terpisah: pergerakan ditulis dulu, baru stok
   // diubah. Kalau stok kurang saat keluar, pergerakannya sudah terlanjur
   // tersimpan padahal stoknya tidak pernah berkurang.
-  async catat({ productId, type, quantity, note = null, mitraId = null, reason = null }) {
+  async catat({ productId, type, quantity, note = null, mitraId = null, reason = null, userId = null }) {
     const { data, error } = await supabase.rpc('record_stock_movement', {
       p_product_id: productId,
       p_type: type,
@@ -655,6 +696,7 @@ export const stockMovementService = {
       p_note: note,
       p_mitra_id: mitraId,
       p_reason: reason,
+      p_user_id: userId,
     });
 
     if (error) throw error;

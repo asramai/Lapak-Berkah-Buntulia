@@ -7,7 +7,7 @@ import {
 import Pagination from '../components/Pagination';
 import { ALASAN_STOK_KELUAR, hintAlasan, labelAlasan, ringkasanAlasan } from '../lib/stockReasons';
 
-function StockManagement() {
+function StockManagement({ user }) {
   const [productsList, setProductsList] = useState([]);
   const [stockMovements, setStockMovements] = useState([]);
   const [pendingValidations, setPendingValidations] = useState([]);
@@ -165,7 +165,7 @@ function StockManagement() {
   // melebihi stok meninggalkan riwayat yang menyatakan barang keluar padahal
   // stoknya tidak pernah berkurang.
   const catatStok = async ({ productId, type, quantity, note, mitraId, reason = null }) => {
-    await stockMovementService.catat({ productId, type, quantity, note, mitraId, reason });
+    await stockMovementService.catat({ productId, type, quantity, note, mitraId, reason, userId: user?.id });
     window.dispatchEvent(new CustomEvent('kasir:stock-updated'));
   };
 

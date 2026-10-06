@@ -502,6 +502,7 @@ const tipe = stock.type || 'in';
         note: stock.note || null,
         mitraId: stock.mitraId ? String(stock.mitraId) : null,
         reason: tipe === 'out' ? stock.reason : null,
+        userId: user?.id,
       });
 
       setStockInputs((prev) => prev.filter((s) => s.id !== stockId));
