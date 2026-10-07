@@ -1,22 +1,35 @@
 import { useState } from 'react';
 
 const primaryItems = [
-  { icon: 'dashboard', label: 'Dashboard', page: 'dashboard', roles: ['admin', 'kasir', 'mitra'] },
-  { icon: 'barcode_scanner', label: 'POS', page: 'pos-desktop', roles: ['admin', 'kasir'] },
-  { icon: 'group', label: 'Mitra', page: 'mitra', roles: ['admin', 'mitra'] },
-  { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin'] },
+  { icon: 'dashboard', label: 'Dashboard', page: 'dashboard', roles: ['admin', 'owner', 'kasir', 'mitra'] },
+  { icon: 'point_of_sale', label: 'POS', page: 'pos-desktop', roles: ['admin', 'owner', 'kasir'] },
+  { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
 ];
 
 const moreItems = [
-  { icon: 'history', label: 'Riwayat', page: 'transaction-history', roles: ['admin', 'kasir'] },
-  { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'kasir'] },
-  { icon: 'shopping_bag', label: 'Produk', page: 'product', roles: ['admin'] },
-  { icon: 'admin_panel_settings', label: 'Admin', page: 'financial', roles: ['admin'] },
+  { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin', 'owner'] },
+  { icon: 'history', label: 'Riwayat', page: 'transaction-history', roles: ['admin', 'owner', 'kasir'] },
+  { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
+  { icon: 'shopping_bag', label: 'Produk', page: 'product', roles: ['admin', 'owner'] },
+  { icon: 'admin_panel_settings', label: 'Admin', page: 'financial', roles: ['admin', 'owner'] },
+  { icon: 'history_toggle_off', label: 'Audit Log', page: 'audit-log', roles: ['admin'] },
+  { icon: 'manage_accounts', label: 'Manajemen Pengguna', page: 'user-management', roles: ['admin'] },
 ];
 
 function BottomNav({ activePage, onNavigate, role, lowStockCount = 0 }) {
-  const accessiblePrimary = primaryItems.filter((item) => !role || item.roles.includes(role));
-  const accessibleMore = moreItems.filter((item) => !role || item.roles.includes(role));
+  // Owner: semua kecuali audit-log dan user-management
+  // Admin: semua
+  // Kasir/Mitra: sesuai roles di items
+  const filterByRole = (items) => items.filter((item) => {
+    if (!role) return true;
+    if (role === 'owner') {
+      return item.roles.includes('owner') || item.roles.includes('admin');
+    }
+    return item.roles.includes(role);
+  });
+
+  const accessiblePrimary = filterByRole(primaryItems);
+  const accessibleMore = filterByRole(moreItems);
   const hasMore = accessibleMore.length > 0;
   const [showMore, setShowMore] = useState(false);
 
