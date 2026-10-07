@@ -3,10 +3,11 @@ import { useState } from 'react';
 const primaryItems = [
   { icon: 'dashboard', label: 'Dashboard', page: 'dashboard', roles: ['admin', 'owner', 'kasir', 'mitra'] },
   { icon: 'point_of_sale', label: 'POS', page: 'pos-desktop', roles: ['admin', 'owner', 'kasir'] },
-  { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
+  { icon: 'more_horiz', label: 'More', page: 'more', roles: ['admin', 'owner', 'kasir', 'mitra'] },
 ];
 
 const moreItems = [
+  { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
   { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin', 'owner'] },
   { icon: 'history', label: 'Riwayat', page: 'transaction-history', roles: ['admin', 'owner', 'kasir'] },
@@ -35,10 +36,13 @@ function BottomNav({ activePage, onNavigate, role, lowStockCount = 0 }) {
   const hasMore = accessibleMore.length > 0;
   const [showMore, setShowMore] = useState(false);
 
+  const primaryButtons = accessiblePrimary.filter(item => item.page !== 'more');
+  const moreButton = accessiblePrimary.find(item => item.page === 'more');
+
   return (
     <>
       <nav className="fixed bottom-0 left-0 w-full z-50 flex md:hidden justify-around items-center px-1 pb-safe h-16 bg-surface border-t border-outline-variant/50">
-        {accessiblePrimary.map((item) => (
+        {primaryButtons.map((item) => (
           <button
             key={item.page}
             onClick={() => onNavigate(item.page)}
@@ -51,7 +55,6 @@ function BottomNav({ activePage, onNavigate, role, lowStockCount = 0 }) {
             <span
               className="material-symbols-outlined text-[22px]"
               data-icon={item.icon}
-              data-weight={item.icon === 'admin_panel_settings' ? 'fill' : undefined}
             >
               {item.icon}
             </span>
@@ -59,7 +62,7 @@ function BottomNav({ activePage, onNavigate, role, lowStockCount = 0 }) {
           </button>
         ))}
 
-        {hasMore && (
+        {moreButton && hasMore && (
           <button
             onClick={() => setShowMore(true)}
             className={`flex flex-col items-center justify-center transition-all min-h-[44px] flex-1 py-1.5 ${
