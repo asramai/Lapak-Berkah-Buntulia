@@ -28,7 +28,7 @@ function NavDrawer({ activePage, onNavigate, onLogout, role }) {
   const displayRole = role === 'admin' ? 'Admin' : role === 'owner' ? 'Owner' : role === 'kasir' ? 'Kasir' : 'Mitra';
 
   return (
-    <nav className="fixed inset-y-0 left-0 z-40 hidden md:flex flex-col h-full w-72 rounded-r-xl border-r border-outline-variant shadow-lg bg-surface-container-low mt-16 pb-16 overflow-y-auto">
+    <nav className="fixed inset-y-0 left-0 z-50 hidden md:flex flex-col h-full w-72 rounded-r-xl border-r border-outline-variant shadow-lg bg-surface-container-low mt-16 pb-16 overflow-y-auto">
       <div className="p-6">
         <h2 className="font-headline-md text-headline-md text-primary">Lapak Berkah Buntulia</h2>
         {role && (
