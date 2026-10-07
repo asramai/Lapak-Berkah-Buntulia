@@ -4,10 +4,10 @@ const primaryItems = [
   { icon: 'dashboard', label: 'Dashboard', page: 'dashboard', roles: ['admin', 'owner', 'kasir', 'mitra'] },
   { icon: 'point_of_sale', label: 'POS', page: 'pos-desktop', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
-  { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
 ];
 
 const moreItems = [
+  { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin', 'owner'] },
   { icon: 'history', label: 'Riwayat', page: 'transaction-history', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
