@@ -5,7 +5,6 @@ function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState('kasir');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -16,7 +15,7 @@ function Login({ onLogin }) {
 
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const user = await authService.login(normalizedEmail, password, role);
+      const user = await authService.login(normalizedEmail, password);
       onLogin(user.role, user);
     } catch (err) {
       setError(err.message || 'Login gagal. Periksa kembali kredensial Anda.');
@@ -95,28 +94,6 @@ function Login({ onLogin }) {
               >
                 <span className="material-symbols-outlined">{showPassword ? 'visibility' : 'visibility_off'}</span>
               </button>
-            </div>
-
-            {/* Role Selector */}
-            <div className="relative">
-              <label className="sr-only" htmlFor="role">Peran</label>
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-outline">
-                <span className="material-symbols-outlined">badge</span>
-              </div>
-              <select
-                className="w-full h-12 pl-10 pr-4 bg-surface-container-low border border-outline-variant rounded-lg font-body-md text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all appearance-none cursor-pointer"
-                id="role"
-                name="role"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              >
-                <option value="admin">Admin / Owner</option>
-                <option value="kasir">Kasir</option>
-                <option value="mitra">Mitra</option>
-              </select>
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-outline">
-                <span className="material-symbols-outlined">arrow_drop_down</span>
-              </div>
             </div>
 
             {/* Remember me & Forgot password */}

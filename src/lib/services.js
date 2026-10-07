@@ -2,14 +2,13 @@ import { supabase } from './supabase';
 import { buildProfitRows, summarizeProfit, getLocalDate } from './profitReport';
 
 export const authService = {
-  async login(email, password, role) {
+  async login(email, password) {
     const normalizedEmail = (email || '').trim().toLowerCase();
 
     const { data, error } = await supabase
       .rpc('login_user', {
         p_email: normalizedEmail,
         p_password: password,
-        p_role: role,
       });
 
     if (error) {
@@ -17,17 +16,7 @@ export const authService = {
     }
 
     if (!data || data.length === 0) {
-      const { data: users } = await supabase
-        .from('users')
-        .select('role')
-        .eq('email', normalizedEmail);
-
-      if (users && users.length > 0) {
-        const roles = users.map((u) => u.role).join(', ');
-        throw new Error(`Peran salah. Akun ini terdaftar sebagai: ${roles}`);
-      }
-
-      throw new Error('Email, kata sandi, atau peran salah');
+      throw new Error('Email atau kata sandi salah');
     }
 
     return data[0];
