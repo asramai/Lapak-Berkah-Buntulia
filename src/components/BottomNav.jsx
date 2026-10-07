@@ -4,6 +4,7 @@ const primaryItems = [
   { icon: 'dashboard', label: 'Dashboard', page: 'dashboard', roles: ['admin', 'owner', 'kasir', 'mitra'] },
   { icon: 'point_of_sale', label: 'POS', page: 'pos-desktop', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
+  { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
 ];
 
 const moreItems = [
@@ -12,6 +13,7 @@ const moreItems = [
   { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'shopping_bag', label: 'Produk', page: 'product', roles: ['admin', 'owner'] },
   { icon: 'admin_panel_settings', label: 'Admin', page: 'financial', roles: ['admin', 'owner'] },
+  { icon: 'receipt_long', label: 'Nota Mitra', page: 'mitra-settlement', roles: ['admin', 'owner'] },
   { icon: 'history_toggle_off', label: 'Audit Log', page: 'audit-log', roles: ['admin'] },
   { icon: 'manage_accounts', label: 'Manajemen Pengguna', page: 'user-management', roles: ['admin'] },
 ];
