@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useMemo } from 'react';
-import { userService } from '../lib/services';
+﻿import { useState, useEffect, useMemo, useCallback } from 'react';
+import { userService, mitraService } from '../lib/services';
 
 const ROLE_LABELS = {
   owner: 'Owner',
@@ -13,8 +13,11 @@ const ROLE_OPTIONS = [
   { value: 'kasir', label: 'Kasir' },
 ];
 
+const DEFAULT_MITRA_PASSWORD = 'mitra123';
+
 export default function UserManagement() {
   const [users, setUsers] = useState([]);
+  const [mitraList, setMitraList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -37,21 +40,30 @@ export default function UserManagement() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadUsers = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const data = await userService.getAll();
-      setUsers(data || []);
+      const [userData, mitraData] = await Promise.all([
+        userService.getAll(),
+        mitraService.getAll({ includeDeleted: true }),
+      ]);
+      setUsers(userData || []);
+      setMitraList(mitraData || []);
     } catch (err) {
-      showToast('Gagal memuat daftar pengguna: ' + err?.message, 'error');
+      showToast('Gagal memuat data: ' + err?.message, 'error');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
+    loadData();
   }, []);
+
+  const getMitraByEmail = useCallback((email) => {
+    if (!email) return null;
+    return mitraList.find((m) => m.email?.toLowerCase() === email.toLowerCase()) || null;
+  }, [mitraList]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -61,6 +73,16 @@ export default function UserManagement() {
     }
     if (password && password.length < 6) {
       showToast('Kata sandi minimal 6 karakter', 'error');
+      return;
+    }
+
+    const isAdmin = true;
+    const roleChanged = editingUser && editingUser.role !== formData.role;
+    const becomingMitra = formData.role === 'mitra';
+    const leavingMitra = editingUser?.role === 'mitra' && formData.role !== 'mitra';
+
+    if ((roleChanged && (becomingMitra || leavingMitra)) && !isAdmin) {
+      showToast('Hanya admin yang bisa mengubah peran Mitra', 'error');
       return;
     }
 
@@ -80,14 +102,50 @@ export default function UserManagement() {
         await userService.create(payload);
         showToast('Pengguna berhasil ditambahkan', 'success');
       }
+
+      if (becomingMitra) {
+        const existingMitra = getMitraByEmail(formData.email);
+        if (!existingMitra) {
+          await mitraService.create({
+            full_name: formData.nama,
+            address: '',
+            phone: '',
+            email: formData.email,
+            gender: 'Laki-laki',
+            photo: '',
+            status: 'Aktif',
+            total_transaction: 0,
+            total_omzet: 0,
+          });
+          await userService.update(editingUser?.id || '', { password: DEFAULT_MITRA_PASSWORD });
+          showToast(`Akun Mitra dibuat. Password default: ${DEFAULT_MITRA_PASSWORD}`, 'success');
+        }
+      } else if (leavingMitra) {
+        const mitra = getMitraByEmail(formData.email);
+        if (mitra) {
+          await mitraService.update(mitra.id, { status: 'Tidak Aktif' });
+        }
+      }
+
       setShowForm(false);
       setFormData({ nama: '', email: '', password: '', role: 'kasir' });
       setPassword('');
       setConfirmPassword('');
       setEditingUser(null);
-      loadUsers();
+      loadData();
     } catch (err) {
       showToast('Gagal menyimpan: ' + err?.message, 'error');
+    }
+  };
+
+  const handleResetMitraPassword = async (user) => {
+    if (!window.confirm(`Reset password user "${user.nama}" ke default (${DEFAULT_MITRA_PASSWORD})?`)) return;
+    try {
+      await userService.update(user.id, { password: DEFAULT_MITRA_PASSWORD });
+      showToast(`Password direset ke ${DEFAULT_MITRA_PASSWORD}`, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Gagal reset password: ' + err?.message, 'error');
     }
   };
 
@@ -110,10 +168,26 @@ export default function UserManagement() {
       return;
     }
 
+    const user = users.find((u) => u.id === id);
+    const mitra = user ? getMitraByEmail(user.email) : null;
+
+    if (mitra) {
+      if (!window.confirm(
+        `User "${user?.nama}" terhubung ke Mitra "${mitra.full_name}".\n` +
+        `Menghapus user akan memutus akses login Mitra.\n` +
+        `Data Mitra (produk, transaksi) TETAP DI SIMPAN.\n\n` +
+        `Lanjutkan hapus user saja?`
+      )) {
+        setDeletingId(null);
+        setConfirmDelete(false);
+        return;
+      }
+    }
+
     try {
       await userService.delete(id);
       showToast('Pengguna berhasil dihapus', 'success');
-      loadUsers();
+      loadData();
     } catch (err) {
       showToast('Gagal menghapus: ' + err?.message, 'error');
     } finally {
@@ -151,6 +225,19 @@ export default function UserManagement() {
     return result;
   }, [users, roleFilter, search]);
 
+  const usersWithMitra = useMemo(() => {
+    return filteredUsers.map((user) => {
+      const mitra = getMitraByEmail(user.email);
+      return {
+        ...user,
+        mitra,
+        mitraStatus: mitra?.status || '-',
+        mitraTotalTransaksi: mitra?.total_transaction || 0,
+        mitraTotalOmzet: mitra?.total_omzet || 0,
+      };
+    });
+  }, [filteredUsers, getMitraByEmail]);
+
   const roleBadge = (role) => {
     const colors = {
       owner: 'bg-primary-container text-on-primary-container',
@@ -165,6 +252,23 @@ export default function UserManagement() {
       </span>
     );
   };
+
+  const statusBadge = (status) => {
+    if (!status || status === '-') return <span className="text-on-surface-variant">-</span>;
+    const isActive = status === 'Aktif';
+    return (
+      <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-label-md text-label-sm border ${
+        isActive
+          ? 'bg-tertiary-fixed/15 text-tertiary-container border-tertiary-fixed/30'
+          : 'bg-[#fdf2d5] text-[#7a590c] border-[#ebd083]'
+      }`}>
+        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+        {status}
+      </span>
+    );
+  };
+
+  const rupiah = (value) => `Rp ${(Number(value) || 0).toLocaleString('id-ID')}`;
 
   return (
     <div className="flex-1 flex flex-col min-w-0 overflow-hidden h-full">
@@ -251,16 +355,26 @@ export default function UserManagement() {
                       <th className="px-6 py-3 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Nama</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Email</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Peran</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Status Mitra</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Transaksi</th>
+                      <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Omzet</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">Dibuat</th>
                       <th className="px-6 py-4 font-label-md text-label-md text-on-surface-variant uppercase tracking-wider text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-outline-variant">
-                    {users.map((user) => (
+                    {usersWithMitra.map((user) => (
                       <tr key={user.id} className="hover:bg-surface-container-low/50 transition-colors">
                         <td className="px-6 py-4 font-body-md text-body-md text-on-surface">{user.nama}</td>
                         <td className="px-6 py-4 font-body-md text-body-md text-on-surface">{user.email}</td>
                         <td className="px-6 py-4">{roleBadge(user.role)}</td>
+                        <td className="px-6 py-4">{statusBadge(user.mitraStatus)}</td>
+                        <td className="px-6 py-4 text-right font-mono text-body-sm text-on-surface">
+                          {user.mitraTotalTransaksi.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-6 py-4 text-right font-mono text-body-sm text-on-surface">
+                          {rupiah(user.mitraTotalOmzet)}
+                        </td>
                         <td className="px-6 py-4 font-body-sm text-body-sm text-on-surface-variant">
                           {new Date(user.created_at).toLocaleDateString('id-ID', {
                             day: '2-digit',
@@ -277,6 +391,16 @@ export default function UserManagement() {
                               <span className="material-symbols-outlined text-sm">edit</span>
                               Edit
                             </button>
+                            {user.role === 'mitra' && user.mitra && (
+                              <button
+                                onClick={() => handleResetMitraPassword(user)}
+                                className="h-8 px-3 rounded-lg bg-primary-container text-on-primary-container font-label-sm text-label-sm hover:bg-primary-container/80 transition-colors"
+                                title="Reset password ke default (mitra123)"
+                              >
+                                <span className="material-symbols-outlined text-sm">key</span>
+                                Reset PW
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 setDeletingId(user.id);
@@ -353,6 +477,13 @@ export default function UserManagement() {
                         </option>
                       ))}
                     </select>
+                    <p className="font-body-xs text-body-xs text-on-surface-variant mt-1">
+                      {formData.role === 'mitra' 
+                        ? '⚠ Akan membuat/sinkronkan akun Mitra. Password default: mitra123' 
+                        : editingUser?.role === 'mitra' 
+                        ? '⚠ Mengubah peran dari Mitra akan menonaktifkan data Mitra' 
+                        : ''}
+                    </p>
                   </div>
 
                   <div className="space-y-2">
