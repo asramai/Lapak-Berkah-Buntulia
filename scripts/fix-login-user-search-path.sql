@@ -22,20 +22,19 @@
 --   mengabaikan skema yang tidak ada di search_path. Jadi aman untuk ditulis di
 --   sini baik pgcrypto ada di extensions maupun di public.
 
-CREATE OR REPLACE FUNCTION login_user(p_email TEXT, p_password TEXT, p_role TEXT)
+CREATE OR REPLACE FUNCTION login_user(p_email TEXT, p_password TEXT)
 RETURNS TABLE(id UUID, email TEXT, role TEXT, nama TEXT) AS $$
 BEGIN
   RETURN QUERY
   SELECT u.id, u.email, u.role, u.nama
   FROM users u
   WHERE u.email = p_email
-    AND u.role = p_role
     AND u.password = crypt(p_password, u.password);
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, extensions, pg_temp;
 
-REVOKE ALL ON FUNCTION login_user(TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT, TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION login_user(TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT) TO anon, authenticated;
 
 
 -- ============================================================
@@ -43,7 +42,7 @@ GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT, TEXT) TO anon, authenticated;
 -- ============================================================
 -- 1. Fungsi jalan. Query ini harus mengembalikan baris, bukan error:
 --    SELECT id, email, role, nama FROM login_user(
---      'admin@lapakberkah.com', '<password yang sebenarnya>', 'admin');
+--      'admin@lapakberkah.com', '<password yang sebenarnya>');
 --    Ganti email dan password dengan akun yang benar-benar ada.
 --
 -- 2. Kalau masih error "does not exist", berarti pgcrypto tidak terpasang di

@@ -57,21 +57,21 @@ CREATE POLICY "users_tambah_mitra" ON users
 -- yang sama dengan anon. Begitu RLS dinyalakan tanpa policy SELECT, login akan
 -- gagal. Dengan SECURITY DEFINER, fungsi membaca dengan hak pemilik tabel dan
 -- RLS tidak berlaku untuknya.
+-- Sekarang p_role dihapus: role diambil otomatis dari database.
 
-CREATE OR REPLACE FUNCTION login_user(p_email TEXT, p_password TEXT, p_role TEXT)
+CREATE OR REPLACE FUNCTION login_user(p_email TEXT, p_password TEXT)
 RETURNS TABLE(id UUID, email TEXT, role TEXT, nama TEXT) AS $$
 BEGIN
   RETURN QUERY
   SELECT u.id, u.email, u.role, u.nama
   FROM users u
   WHERE u.email = p_email
-    AND u.role = p_role
     AND u.password = crypt(p_password, u.password);
 END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, pg_temp;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, extensions, pg_temp;
 
-REVOKE ALL ON FUNCTION login_user(TEXT, TEXT, TEXT) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT, TEXT) TO anon, authenticated;
+REVOKE ALL ON FUNCTION login_user(TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT) TO anon, authenticated;
 
 
 -- ============================================================
