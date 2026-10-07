@@ -52,11 +52,7 @@ export const userService = {
 
   // Ambil semua user untuk manajemen akun (Owner, Mitra, Kasir)
   async getAll() {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, nama, email, role, created_at')
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.rpc('get_all_users');
     if (error) throw error;
     return data || [];
   },
