@@ -35,54 +35,41 @@ export const authService = {
 };
 
 export const userService = {
-  // Sengaja tanpa .select(). Tabel users tidak punya policy SELECT supaya hash
-  // password tidak bisa dibaca dari peramban. PostgREST menjalankan
-  // INSERT ... RETURNING kalau .select() dipakai, dan RETURNING ikut disaring
-  // policy SELECT, jadi INSERT akan gagal dengan "new row violates row-level
-  // security policy" padahal INSERT-nya sendiri sah. Tidak ada yang butuh data
-  // kembalinya: pemanggil hanya ingin tahu berhasil atau tidak.
   async create(user) {
-    const { error } = await supabase
-      .from('users')
-      .insert([user]);
-
+    const { error } = await supabase.rpc('create_user', {
+      p_nama: user.nama,
+      p_email: user.email,
+      p_password: user.password,
+      p_role: user.role,
+    });
     if (error) throw error;
     return true;
   },
 
-  // Ambil semua user untuk manajemen akun (Owner, Mitra, Kasir)
   async getAll() {
     const { data, error } = await supabase.rpc('get_all_users', {});
     if (error) throw error;
     return data || [];
   },
 
-  // Update user (nama, email, role, password)
   async update(id, updates) {
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', id)
-      .select('id, nama, email, role, created_at')
-      .single();
-
-    if (error) throw error;
-    return data;
-  },
-
-  // Hapus user
-  async delete(id) {
-    const { error } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', id);
-
+    const { error } = await supabase.rpc('update_user', {
+      p_id: id,
+      p_nama: updates.nama,
+      p_email: updates.email,
+      p_role: updates.role,
+      p_password: updates.password ?? null,
+    });
     if (error) throw error;
     return true;
   },
 
-  // Toggle status aktif/tidak aktif (via role atau kolom tambahan jika ada)
-  // Untuk sekarang kita gunakan role sebagai indikator, bisa ditambah kolom is_active jika perlu
+  async delete(id) {
+    const { error } = await supabase.rpc('delete_user', { p_id: id });
+    if (error) throw error;
+    return true;
+  },
+
   async toggleStatus(id, newRole) {
     return this.update(id, { role: newRole });
   },
