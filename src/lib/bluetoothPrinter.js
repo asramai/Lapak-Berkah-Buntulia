@@ -111,21 +111,30 @@ export function buildReturnReceiptPayload(transaction, returnReason) {
   return bytesToUint8Array(bytes);
 }
 
-export function buildSettlementPayload(settlement) {
+const ROLE_LABELS = { admin: 'Admin', owner: 'Owner', kasir: 'Kasir', mitra: 'Mitra' };
+
+// Label level akun untuk tanda tangan nota.
+export function formatRoleLabel(role) {
+  return ROLE_LABELS[role] || 'Kasir';
+}
+
+export function buildSettlementPayload(settlement, currentUser) {
   const totalModal = (settlement.items || []).reduce(
     (sum, item) => sum + ((item.cost_price || 0) * (item.quantity || 0)), 0
   );
   const now = new Date().toLocaleString('id-ID');
   const payload = [];
 
-  // Lebar kolom tabel. Pakai Font B (ESC M) agar muat di kertas
-  // thermal 58mm (~42 karakter per baris).
-  const PRODUK_W = 13;
+  // Lebar kolom tabel untuk kertas thermal 58mm. Seluruh nota dicetak
+  // dengan Font A (bawaan printer, lebih besar dari Font B), sehingga
+  // lebar maksimal ~32 karakter per baris. Nama produk yang lebih
+  // panjang dari kolom otomatis pindah ke baris baru (wrapText).
+  const PRODUK_W = 10;
   const QTY_W = 3;
   const HARGA_W = 7;
   const SUBTOTAL_W = 9;
-  const GAP = '   ';
-  const HEADER_GAP = ' | ';
+  const GAP = '|';
+  const HEADER_GAP = '|';
 
   const padRight = (str, len) => {
     str = String(str ?? '');
@@ -167,10 +176,11 @@ export function buildSettlementPayload(settlement) {
     return lines.length > 0 ? lines : [''];
   };
 
-  // Level akun pembuat invoice (Admin atau Kasir)
-  const roleLabels = { admin: 'Admin', owner: 'Owner', kasir: 'Kasir', mitra: 'Mitra' };
-  const role = settlement.user?.role || settlement.role || 'kasir';
-  const roleLabel = roleLabels[role] || 'Kasir';
+  // Level akun pembuat invoice. Nama dan role di-snapshot di database
+  // (kolom user_nama / user_role); invoice lama yang belum punya
+  // snapshot jatuh ke relasi user, lalu ke akun yang sedang mencetak.
+  const role = settlement.user_role || settlement.user?.role || currentUser?.role || settlement.role || 'kasir';
+  const label = formatRoleLabel(role);
 
   // Reset printer
   payload.push([ESC, 0x40]);
@@ -184,9 +194,6 @@ export function buildSettlementPayload(settlement) {
   payload.push(`No. Invoice: ${settlement.invoice_number || '-'}`);
   payload.push(`Tanggal: ${settlement.date || '-'}`);
   payload.push('______________________');
-
-  // Font B agar kolom tabel muat di kertas struk
-  payload.push([ESC, 0x4d, 0x01]);
 
   // Header tabel
   payload.push(
@@ -221,24 +228,32 @@ export function buildSettlementPayload(settlement) {
   payload.push(`Total Modal: Rp. ${totalModal.toLocaleString('id-ID')}`);
   payload.push('');
 
-  // Tanda tangan: Mitra (kiri) & Level Akun (kanan)
-  payload.push(padRight('Mitra', 22) + roleLabel);
+  // Tanda tangan: Mitra (kiri) & level akun pembuat (kanan).
+  // Padding nama sengaja tidak memotong: nama panjang hanya
+  // pindah baris, tidak boleh hilang dari nota.
+  const padRightSoft = (str, len) => {
+    str = String(str ?? '');
+    return str.length >= len ? str : str + ' '.repeat(len - str.length);
+  };
+  payload.push(padRight('Mitra', 18) + label);
   payload.push('');
   payload.push('');
   payload.push('');
   const mitraName = settlement.mitra?.full_name || '-';
-  const userName = settlement.user?.nama || settlement.user?.email || '-';
-  payload.push(padRight(`(${mitraName})`, 24) + `(${userName})`);
+  const userName = settlement.user_nama
+    || settlement.user?.nama
+    || currentUser?.nama
+    || settlement.user?.email
+    || '-';
+  payload.push(padRightSoft(`(${mitraName})`, 18) + `(${userName})`);
   payload.push('____________________________');
 
   // Footer
   payload.push('');
-  payload.push('Dokumen ini dicetak secara otomatis oleh sistem');
+  payload.push('Dokumen ini dicetak secara');
+  payload.push('otomatis oleh sistem');
   payload.push('Lapak Berkah Buntulia');
   payload.push(now);
-
-  // Kembali ke Font A
-  payload.push([ESC, 0x4d, 0x00]);
 
   // Feed 2 baris agar kertas terdorong tepat untuk disobek
   payload.push([ESC, 0x64, 0x02]);
@@ -251,8 +266,8 @@ export function buildSettlementPayload(settlement) {
   return bytesToUint8Array(bytes);
 }
 
-export async function printSettlementBluetooth(settlement) {
-  const payload = buildSettlementPayload(settlement);
+export async function printSettlementBluetooth(settlement, currentUser) {
+  const payload = buildSettlementPayload(settlement, currentUser);
 
   try {
     const { characteristic } = await connectPrinter();

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { mitraSettlementService, mitraService, productService, transactionService, returnService } from '../lib/services';
 import { buildProfitRows, summarizeProfit, getLocalDate } from '../lib/profitReport';
 import { hitungRekonsiliasiMitra } from '../lib/mitraReconciliation';
-import { printSettlementBluetooth } from '../lib/bluetoothPrinter';
+import { printSettlementBluetooth, formatRoleLabel } from '../lib/bluetoothPrinter';
 
 function MitraSettlement({ user }) {
   const [settlements, setSettlements] = useState([]);
@@ -365,7 +365,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
   const handlePrint = async (settlement) => {
     // Cetak via Bluetooth printer yang sama dengan menu kasir.
     // Kalau printer tidak terhubung, fallback ke popup window.
-    const result = await printSettlementBluetooth(settlement);
+    const result = await printSettlementBluetooth(settlement, user);
     if (result.success) {
       showToast('Invoice tercetak', 'success');
       return;
@@ -473,9 +473,9 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
         <p class="text-xs">Penerima</p>
       </div>
       <div class="text-center">
-        <p class="font-bold mb-4">${settlement.user?.role === 'admin' ? 'Admin' : 'Kasir'}</p>
+        <p class="font-bold mb-4">${formatRoleLabel(settlement.user_role || settlement.user?.role)}</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
-        <p class="text-xs font-bold">${settlement.user?.nama || user?.nama || '_________________'}</p>
+        <p class="text-xs font-bold">${settlement.user_nama || settlement.user?.nama || user?.nama || '_________________'}</p>
         <p class="text-xs">Pembuat</p>
       </div>
     </div>
@@ -1191,9 +1191,9 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   <p className="text-xs text-gray-500">Penerima</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold mb-8">{selectedSettlement.user?.role === 'admin' ? 'Admin' : 'Kasir'}</p>
+                  <p className="font-bold mb-8">{formatRoleLabel(selectedSettlement.user_role || selectedSettlement.user?.role)}</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
-                  <p className="text-sm font-bold">{selectedSettlement.user?.nama || user?.nama || '_________________'}</p>
+                  <p className="text-sm font-bold">{selectedSettlement.user_nama || selectedSettlement.user?.nama || user?.nama || '_________________'}</p>
                   <p className="text-xs text-gray-500">Pembuat</p>
                 </div>
               </div>
