@@ -2,12 +2,14 @@
 import { userService, mitraService } from '../lib/services';
 
 const ROLE_LABELS = {
+  admin: 'Admin',
   owner: 'Owner',
   mitra: 'Mitra',
   kasir: 'Kasir',
 };
 
 const ROLE_OPTIONS = [
+  { value: 'admin', label: 'Admin' },
   { value: 'owner', label: 'Owner' },
   { value: 'mitra', label: 'Mitra' },
   { value: 'kasir', label: 'Kasir' },
@@ -240,6 +242,7 @@ export default function UserManagement() {
 
   const roleBadge = (role) => {
     const colors = {
+      admin: 'bg-error-container text-error',
       owner: 'bg-primary-container text-on-primary-container',
       mitra: 'bg-secondary-container text-on-secondary-container',
       kasir: 'bg-tertiary-container text-on-tertiary-container',
@@ -321,6 +324,7 @@ export default function UserManagement() {
                   className="w-full h-10 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md appearance-none"
                 >
                   <option value="semua">Semua Peran</option>
+                  <option value="admin">Admin</option>
                   <option value="owner">Owner</option>
                   <option value="mitra">Mitra</option>
                   <option value="kasir">Kasir</option>

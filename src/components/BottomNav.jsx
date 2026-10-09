@@ -26,7 +26,7 @@ function BottomNav({ activePage, onNavigate, role, lowStockCount = 0 }) {
   const filterByRole = (items) => items.filter((item) => {
     if (!role) return true;
     if (role === 'owner') {
-      return item.roles.includes('owner') || item.roles.includes('admin');
+      return item.roles.includes('owner');
     }
     return item.roles.includes(role);
   });

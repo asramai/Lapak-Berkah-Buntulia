@@ -475,7 +475,12 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
       </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-4 mt-4 pt-2">
+    <div class="grid grid-cols-3 gap-2 mt-4 pt-2">
+      <div class="text-center">
+        <p class="font-bold mb-4">Cap Lapak</p>
+        <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
+        <p class="text-xs">Lapak Berkah Buntulia</p>
+      </div>
       <div class="text-center">
         <p class="font-bold mb-4">Mitra</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
@@ -483,7 +488,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
         <p class="text-xs">Penerima</p>
       </div>
       <div class="text-center">
-        <p class="font-bold mb-4">Owner/Admin</p>
+        <p class="font-bold mb-4">Pengguna</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
         <p class="text-xs font-bold">${settlement.user?.nama || user?.nama || '_________________'}</p>
         <p class="text-xs">Pembuat</p>
@@ -1204,7 +1209,12 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
               </div>
 
               {/* Signatures */}
-              <div className="grid grid-cols-2 gap-8 mt-8 pt-4">
+              <div className="grid grid-cols-3 gap-4 mt-8 pt-4">
+                <div className="text-center">
+                  <p className="font-bold mb-8">Cap Lapak</p>
+                  <div className="border-b border-gray-400 mb-2 h-8"></div>
+                  <p className="text-xs text-gray-500">Lapak Berkah Buntulia</p>
+                </div>
                 <div className="text-center">
                   <p className="font-bold mb-8">Mitra</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
@@ -1212,7 +1222,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   <p className="text-xs text-gray-500">Penerima</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold mb-8">Owner/Admin</p>
+                  <p className="font-bold mb-8">Pengguna</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
                   <p className="text-sm font-bold">{selectedSettlement.user?.nama || user?.nama || '_________________'}</p>
                   <p className="text-xs text-gray-500">Pembuat</p>

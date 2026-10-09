@@ -20,7 +20,7 @@ function NavDrawer({ activePage, onNavigate, onLogout, role }) {
   const accessibleItems = navItems.filter((item) => {
     if (!role) return true;
     if (role === 'owner') {
-      return item.roles.includes('owner') || item.roles.includes('admin');
+      return item.roles.includes('owner');
     }
     return item.roles.includes(role);
   });

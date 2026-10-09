@@ -144,6 +144,15 @@ export function buildSettlementPayload(settlement) {
   payload.push(`Total Modal: Rp ${totalModal.toLocaleString('id-ID')}`);
   payload.push(`Untuk Owner: Rp ${(settlement.total_profit || 0).toLocaleString('id-ID')}`);
 
+  // Signature area: Cap Lapak, Mitra, Pengguna
+  payload.push('--------------------');
+  payload.push('Cap Lapak      Mitra      Pengguna');
+  payload.push('');
+  payload.push('');
+  payload.push('(        )    (        )    (        )');
+  payload.push(`Mitra: ${settlement.mitra?.full_name || '-'}`);
+  payload.push(`User: ${settlement.user?.nama || settlement.user?.email || '-'}`);
+
   // Footer
   payload.push('--------------------');
   payload.push('Terima kasih');
