@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { mitraSettlementService, mitraService, productService, transactionService, returnService } from '../lib/services';
 import { buildProfitRows, summarizeProfit, getLocalDate } from '../lib/profitReport';
 import { hitungRekonsiliasiMitra } from '../lib/mitraReconciliation';
+import { printSettlementBluetooth } from '../lib/bluetoothPrinter';
 
 function MitraSettlement({ user }) {
   const [settlements, setSettlements] = useState([]);
@@ -361,7 +362,15 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
     }
   };
 
-  const handlePrint = (settlement) => {
+  const handlePrint = async (settlement) => {
+    // Cetak via Bluetooth printer yang sama dengan menu kasir.
+    // Kalau printer tidak terhubung, fallback ke popup window.
+    const result = await printSettlementBluetooth(settlement);
+    if (result.success) {
+      showToast('Invoice tercetak', 'success');
+      return;
+    }
+
     setSelectedSettlement(settlement);
     setTimeout(() => {
       const printContent = document.querySelector('.print-section');

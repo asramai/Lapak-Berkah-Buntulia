@@ -14,7 +14,7 @@ const moreItems = [
   { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'shopping_bag', label: 'Produk', page: 'product', roles: ['admin', 'owner'] },
   { icon: 'admin_panel_settings', label: 'Admin', page: 'financial', roles: ['admin', 'owner'] },
-  { icon: 'receipt_long', label: 'Nota Mitra', page: 'mitra-settlement', roles: ['admin', 'owner'] },
+  { icon: 'receipt_long', label: 'Nota Mitra', page: 'mitra-settlement', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'history_toggle_off', label: 'Audit Log', page: 'audit-log', roles: ['admin'] },
   { icon: 'manage_accounts', label: 'Manajemen Pengguna', page: 'user-management', roles: ['admin'] },
 ];

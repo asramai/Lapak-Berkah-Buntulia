@@ -111,6 +111,80 @@ export function buildReturnReceiptPayload(transaction, returnReason) {
   return bytesToUint8Array(bytes);
 }
 
+export function buildSettlementPayload(settlement) {
+  const totalModal = (settlement.items || []).reduce(
+    (sum, item) => sum + ((item.cost_price || 0) * (item.quantity || 0)), 0
+  );
+  const payload = [];
+
+  // Reset printer
+  payload.push([ESC, 0x40]);
+
+  // Header Center
+  payload.push([ESC, 0x61, 0x01]);
+  payload.push('LAPAK BERKAH BUNTULIA');
+  payload.push('Nota Penjualan Mitra');
+
+  // Align Left
+  payload.push([ESC, 0x61, 0x00]);
+  payload.push(`No. Invoice: ${settlement.invoice_number || '-'}`);
+  payload.push(`Tanggal: ${settlement.date || '-'}`);
+  payload.push(`Kepada: ${settlement.mitra?.full_name || '-'}`);
+  payload.push('--------------------');
+
+  // Items
+  for (const item of settlement.items || []) {
+    const subtotal = (item.selling_price || 0) * (item.quantity || 0);
+    payload.push(item.product_name || 'Produk');
+    payload.push(`${item.quantity} x ${(item.selling_price || 0).toLocaleString('id-ID')} = Rp ${subtotal.toLocaleString('id-ID')}`);
+  }
+
+  payload.push('--------------------');
+  payload.push(`Total Jual: Rp ${(settlement.total_amount || 0).toLocaleString('id-ID')}`);
+  payload.push(`Total Modal: Rp ${totalModal.toLocaleString('id-ID')}`);
+  payload.push(`Untuk Owner: Rp ${(settlement.total_profit || 0).toLocaleString('id-ID')}`);
+
+  // Footer
+  payload.push('--------------------');
+  payload.push('Terima kasih');
+
+  // Feed 2 baris agar kertas terdorong tepat untuk disobek
+  payload.push([ESC, 0x64, 0x02]);
+
+  const bytes = [];
+  for (const line of payload) {
+    bytes.push(...bytesToUint8Array(line));
+  }
+
+  return bytesToUint8Array(bytes);
+}
+
+export async function printSettlementBluetooth(settlement) {
+  const payload = buildSettlementPayload(settlement);
+
+  try {
+    const { characteristic } = await connectPrinter();
+
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+      const chunk = payload.slice(i, i + CHUNK_SIZE);
+
+      if (!cachedDevice?.gatt?.connected) {
+        throw new Error('Koneksi Bluetooth terputus');
+      }
+
+      await characteristic.writeValue(chunk);
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+
+    return { success: true, method: 'bluetooth' };
+  } catch (error) {
+    cachedDevice = null;
+    cachedCharacteristic = null;
+    return { success: false, method: 'bluetooth', error: error.message };
+  }
+}
+
 let cachedDevice = null;
 let cachedCharacteristic = null;
 

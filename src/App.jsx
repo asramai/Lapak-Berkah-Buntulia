@@ -22,7 +22,7 @@ import AuditLog from './pages/AuditLog';
 const rolePageAccess = {
   admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement', 'audit-log', 'user-management'],
   owner: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement'],
-  kasir: ['dashboard', 'pos-desktop', 'inventory', 'transaction-history', 'stock-management'],
+  kasir: ['dashboard', 'pos-desktop', 'inventory', 'transaction-history', 'stock-management', 'mitra-settlement'],
   mitra: ['dashboard', 'mitra'],
 };
 
