@@ -118,14 +118,53 @@ export function buildSettlementPayload(settlement) {
   const now = new Date().toLocaleString('id-ID');
   const payload = [];
 
-  // Padding kolom tabel untuk kertas thermal
+  // Lebar kolom tabel. Pakai Font B (ESC M) agar muat di kertas
+  // thermal 58mm (~42 karakter per baris).
+  const PRODUK_W = 13;
+  const QTY_W = 3;
+  const HARGA_W = 7;
+  const SUBTOTAL_W = 9;
+  const GAP = '   ';
+  const HEADER_GAP = ' | ';
+
   const padRight = (str, len) => {
     str = String(str ?? '');
-    return str.length >= len ? str : str + ' '.repeat(len - str.length);
+    return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
   };
   const padLeft = (str, len) => {
     str = String(str ?? '');
     return str.length >= len ? str.slice(-len) : ' '.repeat(len - str.length) + str;
+  };
+
+  // Bungkus nama produk agar tetap berada di kolom Produk:
+  // nama yang panjang pindah ke baris baru di dalam kolom,
+  // sementara Qty/Harga/Subtotal tetap sejajar di kolomnya.
+  // Kata yang lebih panjang dari kolom dipotong per karakter.
+  const wrapText = (text, width) => {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = '';
+    for (const word of words) {
+      let rest = word;
+      while (rest.length > width) {
+        if (current.length > 0) {
+          lines.push(current);
+          current = '';
+        }
+        lines.push(rest.slice(0, width));
+        rest = rest.slice(width);
+      }
+      if (current.length === 0) {
+        current = rest;
+      } else if (current.length + 1 + rest.length <= width) {
+        current += ' ' + rest;
+      } else {
+        lines.push(current);
+        current = rest;
+      }
+    }
+    if (current.length > 0) lines.push(current);
+    return lines.length > 0 ? lines : [''];
   };
 
   // Level akun pembuat invoice (Admin atau Kasir)
@@ -136,7 +175,7 @@ export function buildSettlementPayload(settlement) {
   // Reset printer
   payload.push([ESC, 0x40]);
 
-  // KOP
+  // KOP (Font A)
   payload.push([ESC, 0x61, 0x01]);
   payload.push('LAPAK BERKAH BUNTULIA');
   payload.push('Nota Penjualan Mitra');
@@ -146,16 +185,34 @@ export function buildSettlementPayload(settlement) {
   payload.push(`Tanggal: ${settlement.date || '-'}`);
   payload.push('______________________');
 
-  // Tabel item
-  payload.push('Produk | Qty | Harga | Subtotal');
+  // Font B agar kolom tabel muat di kertas struk
+  payload.push([ESC, 0x4d, 0x01]);
+
+  // Header tabel
+  payload.push(
+    padRight('Produk', PRODUK_W) + HEADER_GAP
+    + padLeft('Qty', QTY_W) + HEADER_GAP
+    + padLeft('Harga', HARGA_W) + HEADER_GAP
+    + padLeft('Subtotal', SUBTOTAL_W)
+  );
+
+  // Item
   for (const item of settlement.items || []) {
     const subtotal = (item.selling_price || 0) * (item.quantity || 0);
+    const nameLines = wrapText(item.product_name || 'Produk', PRODUK_W);
+
+    // Baris pertama: nama (kolom Produk) + angka di kolomnya
     payload.push(
-      padRight(item.product_name || 'Produk', 14)
-      + padLeft(String(item.quantity || 0), 4)
-      + padLeft((item.selling_price || 0).toLocaleString('id-ID'), 9)
-      + padLeft(subtotal.toLocaleString('id-ID'), 10)
+      padRight(nameLines[0], PRODUK_W) + GAP
+      + padLeft(String(item.quantity || 0), QTY_W) + GAP
+      + padLeft((item.selling_price || 0).toLocaleString('id-ID'), HARGA_W) + GAP
+      + padLeft(subtotal.toLocaleString('id-ID'), SUBTOTAL_W)
     );
+
+    // Lanjutan nama produk: tetap di kolom Produk
+    for (let i = 1; i < nameLines.length; i++) {
+      payload.push(nameLines[i]);
+    }
   }
   payload.push('______________________');
 
@@ -179,6 +236,9 @@ export function buildSettlementPayload(settlement) {
   payload.push('Dokumen ini dicetak secara otomatis oleh sistem');
   payload.push('Lapak Berkah Buntulia');
   payload.push(now);
+
+  // Kembali ke Font A
+  payload.push([ESC, 0x4d, 0x00]);
 
   // Feed 2 baris agar kertas terdorong tepat untuk disobek
   payload.push([ESC, 0x64, 0x02]);
