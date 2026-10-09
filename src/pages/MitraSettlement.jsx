@@ -469,18 +469,9 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
         <span>Total Modal:</span>
         <span class="font-bold">Rp ${((settlement.items || []).reduce((sum, item) => sum + (item.cost_price * item.quantity), 0)).toLocaleString('id-ID')}</span>
       </div>
-      <div class="flex justify-between text-sm font-bold border-t border-double border-gray-400 pt-1 mt-1">
-        <span>Untuk Owner:</span>
-        <span>Rp ${(settlement.total_profit || 0).toLocaleString('id-ID')}</span>
-      </div>
     </div>
 
-    <div class="grid grid-cols-3 gap-2 mt-4 pt-2">
-      <div class="text-center">
-        <p class="font-bold mb-4">Cap Lapak</p>
-        <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
-        <p class="text-xs">Lapak Berkah Buntulia</p>
-      </div>
+    <div class="grid grid-cols-2 gap-4 mt-4 pt-2">
       <div class="text-center">
         <p class="font-bold mb-4">Mitra</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
@@ -488,7 +479,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
         <p class="text-xs">Penerima</p>
       </div>
       <div class="text-center">
-        <p class="font-bold mb-4">Pengguna</p>
+        <p class="font-bold mb-4">Kasir</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
         <p class="text-xs font-bold">${settlement.user?.nama || user?.nama || '_________________'}</p>
         <p class="text-xs">Pembuat</p>
@@ -1202,19 +1193,10 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   <span>Total Modal:</span>
                   <span className="font-bold">Rp {((selectedSettlement.items || []).reduce((sum, item) => sum + (item.cost_price * item.quantity), 0)).toLocaleString('id-ID')}</span>
                 </div>
-                <div className="flex justify-between text-lg font-bold border-t border-double border-gray-400 pt-2 mt-2">
-                  <span>Untuk Owner:</span>
-                  <span className="text-primary">Rp {(selectedSettlement.total_profit || 0).toLocaleString('id-ID')}</span>
-                </div>
               </div>
 
               {/* Signatures */}
-              <div className="grid grid-cols-3 gap-4 mt-8 pt-4">
-                <div className="text-center">
-                  <p className="font-bold mb-8">Cap Lapak</p>
-                  <div className="border-b border-gray-400 mb-2 h-8"></div>
-                  <p className="text-xs text-gray-500">Lapak Berkah Buntulia</p>
-                </div>
+              <div className="grid grid-cols-2 gap-8 mt-8 pt-4">
                 <div className="text-center">
                   <p className="font-bold mb-8">Mitra</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
@@ -1222,7 +1204,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   <p className="text-xs text-gray-500">Penerima</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold mb-8">Pengguna</p>
+                  <p className="font-bold mb-8">Kasir</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
                   <p className="text-sm font-bold">{selectedSettlement.user?.nama || user?.nama || '_________________'}</p>
                   <p className="text-xs text-gray-500">Pembuat</p>

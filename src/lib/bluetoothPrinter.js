@@ -115,12 +115,20 @@ export function buildSettlementPayload(settlement) {
   const totalModal = (settlement.items || []).reduce(
     (sum, item) => sum + ((item.cost_price || 0) * (item.quantity || 0)), 0
   );
+  const now = new Date().toLocaleString('id-ID');
   const payload = [];
+
+  // Lebar baris kertas thermal 58mm (Font A) ~ 32 karakter
+  const LINE_WIDTH = 32;
+  const padRight = (str, len) => {
+    str = String(str || '');
+    return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
+  };
 
   // Reset printer
   payload.push([ESC, 0x40]);
 
-  // Header Center
+  // KOP - Header Center
   payload.push([ESC, 0x61, 0x01]);
   payload.push('LAPAK BERKAH BUNTULIA');
   payload.push('Nota Penjualan Mitra');
@@ -129,33 +137,36 @@ export function buildSettlementPayload(settlement) {
   payload.push([ESC, 0x61, 0x00]);
   payload.push(`No. Invoice: ${settlement.invoice_number || '-'}`);
   payload.push(`Tanggal: ${settlement.date || '-'}`);
-  payload.push(`Kepada: ${settlement.mitra?.full_name || '-'}`);
-  payload.push('--------------------');
 
-  // Items
+  // Tabel item
+  payload.push('Produk | Qty | Harga | Subtotal');
+  payload.push('--------------------');
   for (const item of settlement.items || []) {
     const subtotal = (item.selling_price || 0) * (item.quantity || 0);
     payload.push(item.product_name || 'Produk');
-    payload.push(`${item.quantity} x ${(item.selling_price || 0).toLocaleString('id-ID')} = Rp ${subtotal.toLocaleString('id-ID')}`);
+    payload.push(`${item.quantity} | ${(item.selling_price || 0).toLocaleString('id-ID')} | ${subtotal.toLocaleString('id-ID')}`);
   }
 
-  payload.push('--------------------');
+  payload.push('______________________');
   payload.push(`Total Jual: Rp ${(settlement.total_amount || 0).toLocaleString('id-ID')}`);
   payload.push(`Total Modal: Rp ${totalModal.toLocaleString('id-ID')}`);
-  payload.push(`Untuk Owner: Rp ${(settlement.total_profit || 0).toLocaleString('id-ID')}`);
 
-  // Signature area: Cap Lapak, Mitra, Pengguna
-  payload.push('--------------------');
-  payload.push('Cap Lapak      Mitra      Pengguna');
+  // Tanda tangan: Mitra (kiri) & Kasir (kanan)
   payload.push('');
   payload.push('');
-  payload.push('(        )    (        )    (        )');
-  payload.push(`Mitra: ${settlement.mitra?.full_name || '-'}`);
-  payload.push(`User: ${settlement.user?.nama || settlement.user?.email || '-'}`);
+  payload.push(padRight('Mitra', 27) + 'Kasir');
+  payload.push('');
+  payload.push('');
+  const mitraName = settlement.mitra?.full_name || '-';
+  const userName = settlement.user?.nama || settlement.user?.email || '-';
+  payload.push(padRight(`(${mitraName})`, 27) + `(${userName})`);
+  payload.push('____________________________');
 
   // Footer
-  payload.push('--------------------');
-  payload.push('Terima kasih');
+  payload.push('');
+  payload.push('Dokumen ini dicetak secara otomatis oleh sistem');
+  payload.push('Lapak Berkah Buntulia');
+  payload.push(now);
 
   // Feed 2 baris agar kertas terdorong tepat untuk disobek
   payload.push([ESC, 0x64, 0x02]);
