@@ -433,12 +433,6 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
       </div>
     </div>
 
-    <div class="mb-2 p-2 bg-gray-50 rounded">
-      <p class="font-bold mb-1">Kepada:</p>
-      <p class="font-bold">${settlement.mitra?.full_name || '-'}</p>
-      <p class="text-xs">Mitra Lapak Berkah</p>
-    </div>
-
     <table class="w-full text-xs border-collapse mb-2">
       <thead>
         <tr class="border-b-2 border-gray-300">
@@ -479,7 +473,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
         <p class="text-xs">Penerima</p>
       </div>
       <div class="text-center">
-        <p class="font-bold mb-4">Kasir</p>
+        <p class="font-bold mb-4">${settlement.user?.role === 'admin' ? 'Admin' : 'Kasir'}</p>
         <div class="border-b border-gray-400 mb-1" style="height: 24px;"></div>
         <p class="text-xs font-bold">${settlement.user?.nama || user?.nama || '_________________'}</p>
         <p class="text-xs">Pembuat</p>
@@ -1154,13 +1148,6 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                 </div>
               </div>
 
-              {/* Mitra Info */}
-              <div className="mb-4 p-3 bg-gray-50 rounded">
-                <p className="font-bold mb-1">Kepada:</p>
-                <p className="font-bold">{selectedSettlement.mitra?.full_name || '-'}</p>
-                <p className="text-xs text-gray-600">Mitra Lapak Berkah</p>
-              </div>
-
               {/* Items Table */}
               <table className="w-full text-xs border-collapse mb-4">
                 <thead>
@@ -1204,7 +1191,7 @@ const calculateSoldQuantities = (mitraId, dateFrom, dateTo) => {
                   <p className="text-xs text-gray-500">Penerima</p>
                 </div>
                 <div className="text-center">
-                  <p className="font-bold mb-8">Kasir</p>
+                  <p className="font-bold mb-8">{selectedSettlement.user?.role === 'admin' ? 'Admin' : 'Kasir'}</p>
                   <div className="border-b border-gray-400 mb-2 h-8"></div>
                   <p className="text-sm font-bold">{selectedSettlement.user?.nama || user?.nama || '_________________'}</p>
                   <p className="text-xs text-gray-500">Pembuat</p>

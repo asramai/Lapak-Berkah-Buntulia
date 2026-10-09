@@ -118,48 +118,60 @@ export function buildSettlementPayload(settlement) {
   const now = new Date().toLocaleString('id-ID');
   const payload = [];
 
-  // Lebar baris kertas thermal 58mm (Font A) ~ 32 karakter
-  const LINE_WIDTH = 32;
+  // Padding kolom tabel untuk kertas thermal
   const padRight = (str, len) => {
-    str = String(str || '');
-    return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length);
+    str = String(str ?? '');
+    return str.length >= len ? str : str + ' '.repeat(len - str.length);
   };
+  const padLeft = (str, len) => {
+    str = String(str ?? '');
+    return str.length >= len ? str.slice(-len) : ' '.repeat(len - str.length) + str;
+  };
+
+  // Level akun pembuat invoice (Admin atau Kasir)
+  const roleLabels = { admin: 'Admin', owner: 'Owner', kasir: 'Kasir', mitra: 'Mitra' };
+  const role = settlement.user?.role || settlement.role || 'kasir';
+  const roleLabel = roleLabels[role] || 'Kasir';
 
   // Reset printer
   payload.push([ESC, 0x40]);
 
-  // KOP - Header Center
+  // KOP
   payload.push([ESC, 0x61, 0x01]);
   payload.push('LAPAK BERKAH BUNTULIA');
   payload.push('Nota Penjualan Mitra');
 
-  // Align Left
   payload.push([ESC, 0x61, 0x00]);
   payload.push(`No. Invoice: ${settlement.invoice_number || '-'}`);
   payload.push(`Tanggal: ${settlement.date || '-'}`);
+  payload.push('______________________');
 
   // Tabel item
   payload.push('Produk | Qty | Harga | Subtotal');
-  payload.push('--------------------');
   for (const item of settlement.items || []) {
     const subtotal = (item.selling_price || 0) * (item.quantity || 0);
-    payload.push(item.product_name || 'Produk');
-    payload.push(`${item.quantity} | ${(item.selling_price || 0).toLocaleString('id-ID')} | ${subtotal.toLocaleString('id-ID')}`);
+    payload.push(
+      padRight(item.product_name || 'Produk', 14)
+      + padLeft(String(item.quantity || 0), 4)
+      + padLeft((item.selling_price || 0).toLocaleString('id-ID'), 9)
+      + padLeft(subtotal.toLocaleString('id-ID'), 10)
+    );
   }
-
   payload.push('______________________');
-  payload.push(`Total Jual: Rp ${(settlement.total_amount || 0).toLocaleString('id-ID')}`);
-  payload.push(`Total Modal: Rp ${totalModal.toLocaleString('id-ID')}`);
 
-  // Tanda tangan: Mitra (kiri) & Kasir (kanan)
   payload.push('');
+  payload.push(`Total Jual: Rp. ${(settlement.total_amount || 0).toLocaleString('id-ID')}`);
+  payload.push(`Total Modal: Rp. ${totalModal.toLocaleString('id-ID')}`);
   payload.push('');
-  payload.push(padRight('Mitra', 27) + 'Kasir');
+
+  // Tanda tangan: Mitra (kiri) & Level Akun (kanan)
+  payload.push(padRight('Mitra', 22) + roleLabel);
+  payload.push('');
   payload.push('');
   payload.push('');
   const mitraName = settlement.mitra?.full_name || '-';
   const userName = settlement.user?.nama || settlement.user?.email || '-';
-  payload.push(padRight(`(${mitraName})`, 27) + `(${userName})`);
+  payload.push(padRight(`(${mitraName})`, 24) + `(${userName})`);
   payload.push('____________________________');
 
   // Footer

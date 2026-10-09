@@ -906,7 +906,7 @@ export const mitraSettlementService = {
       .select(`
         *,
         mitra:mitra_id (full_name),
-        user:user_id (nama, email)
+        user:user_id (nama, email, role)
       `)
       .order('date', { ascending: false });
 
@@ -929,7 +929,7 @@ export const mitraSettlementService = {
       .select(`
         *,
         mitra:mitra_id (full_name),
-        user:user_id (nama, email),
+        user:user_id (nama, email, role),
         items:mitra_settlement_items (*)
       `)
       .eq('id', id)
