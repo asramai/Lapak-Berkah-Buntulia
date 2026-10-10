@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { productService, categoryService, productTypeService, mitraService } from '../lib/services';
+import { productService, categoryService, productTypeService, productGroupService, mitraService } from '../lib/services';
 import Pagination from '../components/Pagination';
 import compressImage from '../utils/compressImage';
 
@@ -7,10 +7,12 @@ function ProductManagement() {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [types, setTypes] = useState([]);
+  const [groups, setGroups] = useState([]);
   const [mitraList, setMitraList] = useState([]);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [selectedGroup, setSelectedGroup] = useState('Semua');
   const [toast, setToast] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [formData, setFormData] = useState({
@@ -18,6 +20,7 @@ function ProductManagement() {
     sku: '',
     category_id: '',
     type_id: '',
+    group_id: '',
     mitra_id: '',
     mitra_price: '',
     selling_price: '',
@@ -54,9 +57,10 @@ function ProductManagement() {
         product.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (product.barcode_id && product.barcode_id.toLowerCase().includes(searchQuery.toLowerCase()));
       const matchesCategory = selectedCategory === 'Semua' || product.category?.name === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesGroup = selectedGroup === 'Semua' || product.kelompok?.name === selectedGroup;
+      return matchesSearch && matchesCategory && matchesGroup;
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, selectedCategory, selectedGroup]);
 
   const paginatedProducts = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -67,13 +71,13 @@ function ProductManagement() {
 
   useEffect(() => {
     (async () => {
-      await Promise.all([loadProducts(), loadCategories(), loadTypes(), loadMitra()]);
+      await Promise.all([loadProducts(), loadCategories(), loadTypes(), loadGroups(), loadMitra()]);
     })();
   }, []);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, selectedGroup]);
 
   const loadProducts = async () => {
     try {
@@ -100,6 +104,15 @@ function ProductManagement() {
       setTypes(data);
     } catch {
       showToast('Gagal memuat jenis produk', 'error');
+    }
+  };
+
+  const loadGroups = async () => {
+    try {
+      const data = await productGroupService.getAll();
+      setGroups(data);
+    } catch {
+      showToast('Gagal memuat kelompok produk', 'error');
     }
   };
 
@@ -149,6 +162,7 @@ function ProductManagement() {
           sku: formData.sku,
           category_id: formData.category_id || null,
           type_id: formData.type_id || null,
+          group_id: formData.group_id || null,
           mitra_id: formData.mitra_id || null,
           mitra_price: Number(formData.mitra_price),
           selling_price: Number(formData.selling_price),
@@ -165,6 +179,7 @@ function ProductManagement() {
           sku: formData.sku,
           category_id: formData.category_id || null,
           type_id: formData.type_id || null,
+          group_id: formData.group_id || null,
           mitra_id: formData.mitra_id || null,
           mitra_price: Number(formData.mitra_price),
           selling_price: Number(formData.selling_price),
@@ -181,6 +196,7 @@ function ProductManagement() {
         sku: '',
         category_id: '',
         type_id: '',
+        group_id: '',
         mitra_id: '',
         mitra_price: '',
         selling_price: '',
@@ -195,6 +211,7 @@ function ProductManagement() {
       await loadProducts();
       await loadCategories();
       await loadTypes();
+      await loadGroups();
       await loadMitra();
     } catch (error) {
       const detail = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(' | ') || 'Terjadi kesalahan saat menyimpan produk';
@@ -209,6 +226,7 @@ function ProductManagement() {
       sku: product.sku,
       category_id: product.category_id?.toString() || '',
       type_id: product.type_id?.toString() || '',
+      group_id: product.group_id?.toString() || '',
       mitra_id: product.mitra_id?.toString() || '',
       mitra_price: product.mitra_price.toString(),
       selling_price: product.selling_price.toString(),
@@ -484,6 +502,32 @@ function ProductManagement() {
                       </div>
                     </div>
 
+                    {/* Kelompok */}
+                    <div className="space-y-2">
+                      <label className="block font-label-md text-label-md text-on-surface font-medium" htmlFor="group">
+                        Kelompok
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
+                          <span className="material-symbols-outlined text-[20px]">group_work</span>
+                        </div>
+                        <select
+                          className="w-full h-12 pl-12 pr-10 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-body-md text-body-md text-on-background appearance-none cursor-pointer"
+                          id="group"
+                          value={formData.group_id}
+                          onChange={(e) => setFormData({ ...formData, group_id: e.target.value })}
+                        >
+                          <option value="">Pilih Kelompok</option>
+                          {groups.filter(g => g.name !== 'Semua').map(group => (
+                            <option key={group.id} value={group.id}>{group.name}</option>
+                          ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-outline">
+                          <span className="material-symbols-outlined text-[20px]">arrow_drop_down</span>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Nama Mitra */}
                     <div className="space-y-2">
                       <label className="block font-label-md text-label-md text-on-surface font-medium" htmlFor="mitraName">
@@ -695,6 +739,15 @@ function ProductManagement() {
                       <option key={idx} value={cat.name || cat}>{cat.name || cat}</option>
                     ))}
                   </select>
+                  <select
+                    value={selectedGroup}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                    className="h-10 px-3 rounded-xl border border-outline bg-surface-container-low text-on-background focus:border-primary focus:ring-1 focus:ring-primary/20 outline-none text-sm cursor-pointer"
+                  >
+                    {['Semua', ...groups.filter(g => g.name && g.name !== 'Semua').map(g => g.name)].map((name, idx) => (
+                      <option key={idx} value={name}>{name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -707,6 +760,7 @@ function ProductManagement() {
                       <th className="py-3 px-4">SKU</th>
                       <th className="py-3 px-4">Kategori</th>
                       <th className="py-3 px-4">Jenis</th>
+                      <th className="py-3 px-4">Kelompok</th>
                       <th className="py-3 px-4">Mitra</th>
                       <th className="py-3 px-4">Harga Mitra</th>
                       <th className="py-3 px-4">Harga Jual</th>
@@ -718,7 +772,7 @@ function ProductManagement() {
                    <tbody className="divide-y divide-outline-variant/50 text-sm">
                       {paginatedProducts.length === 0 ? (
                        <tr>
-                         <td colSpan="10" className="text-center py-8 text-on-surface-variant">
+                          <td colSpan="11" className="text-center py-8 text-on-surface-variant">
                            Tidak ada produk yang ditemukan.
                          </td>
                        </tr>
@@ -749,6 +803,11 @@ function ProductManagement() {
                             <td className="py-3 px-4">
                               <span className="inline-block px-2.5 py-1 rounded-full text-xs bg-surface-container-high text-on-surface-variant">
                                 {product.type?.name || '-'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="inline-block px-2.5 py-1 rounded-full text-xs bg-surface-container-high text-on-surface-variant">
+                                {product.kelompok?.name || '-'}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-on-surface-variant">{product.mitra?.full_name || '-'}</td>

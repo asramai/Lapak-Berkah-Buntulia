@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { productService, transactionService, mitraService, heldTransactionService, paymentService } from '../lib/services';
+import { productService, transactionService, mitraService, heldTransactionService, paymentService, productGroupService } from '../lib/services';
 import { printReceipt } from '../lib/bluetoothPrinter';
 import { adapterUntuk } from '../lib/paymentGateway';
 
@@ -28,8 +28,12 @@ const initialTransactions = [
 
 function KasirDesktop({ onNavigate }) {
   const [products, setProducts] = useState([]);
+  const [productGroups, setProductGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [selectedGroup, setSelectedGroup] = useState('Semua');
+  // Dimensi tab di atas grid: kategori atau kelompok.
+  const [tabMode, setTabMode] = useState('kategori');
   const [barcode, setBarcode] = useState('');
   const [flash, setFlash] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -67,6 +71,7 @@ function KasirDesktop({ onNavigate }) {
         sku: p.sku,
         category: p.category ? { name: p.category.name } : null,
         type: p.type ? { name: p.type.name } : null,
+        kelompok: p.kelompok ? { name: p.kelompok.name } : null,
         mitra: p.mitra ? { full_name: p.mitra.full_name } : null,
         mitraId: p.mitra_id,
         mitraPrice: p.mitra_price,
@@ -87,6 +92,7 @@ function KasirDesktop({ onNavigate }) {
 
   useEffect(() => {
     loadProducts();
+    productGroupService.getAll().then(setProductGroups).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -110,10 +116,22 @@ function KasirDesktop({ onNavigate }) {
 
   // Optimasi Memoization Kategori & Produk
   const categories = useMemo(() => ['Semua', ...new Set(products.map((p) => p.category?.name).filter(Boolean))], [products]);
+  // Tab kelompok tetap menampilkan kelompok yang sudah didefinisikan
+  // meskipun belum ada produk yang memakainya.
+  const kelompokList = useMemo(() => {
+    const nama = new Set(productGroups.map((g) => g.name).filter(Boolean));
+    for (const p of products) {
+      if (p.kelompok?.name) nama.add(p.kelompok.name);
+    }
+    return ['Semua', ...nama];
+  }, [products, productGroups]);
 
   const filteredProducts = useMemo(() => {
-    return products.filter((product) => selectedCategory === 'Semua' || product.category?.name === selectedCategory);
-  }, [products, selectedCategory]);
+    if (tabMode === 'kategori') {
+      return products.filter((product) => selectedCategory === 'Semua' || product.category?.name === selectedCategory);
+    }
+    return products.filter((product) => selectedGroup === 'Semua' || product.kelompok?.name === selectedGroup);
+  }, [products, tabMode, selectedCategory, selectedGroup]);
 
   const handleBarcodeSubmit = (e) => {
     e.preventDefault();
@@ -228,16 +246,37 @@ function KasirDesktop({ onNavigate }) {
       )}
 
       {/* Filter Tabs */}
-      <div className="px-4 md:px-6 py-2 flex gap-2 overflow-x-auto shrink-0 hide-scrollbar border-b border-outline-variant bg-surface">
-        {categories.map((cat) => (
+      <div className="px-4 md:px-6 py-2 flex gap-2 overflow-x-auto shrink-0 hide-scrollbar border-b border-outline-variant bg-surface items-center">
+        {/* Saklar dimensi tab */}
+        <div className="flex rounded-full border border-outline-variant overflow-hidden shrink-0 mr-1 bg-surface-container-lowest">
           <button
-            key={cat}
-            onClick={() => setSelectedCategory(cat)}
-            className={`h-8 px-4 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-colors ${
-              selectedCategory === cat ? 'bg-primary text-on-primary' : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
+            onClick={() => { setTabMode('kategori'); setSelectedCategory('Semua'); setSelectedGroup('Semua'); }}
+            className={`h-8 px-3 font-label-sm text-label-sm whitespace-nowrap transition-colors ${
+              tabMode === 'kategori' ? 'bg-surface-container-high text-on-surface font-semibold' : 'text-on-surface-variant hover:bg-surface-container'
             }`}
           >
-            {cat}
+            Kategori
+          </button>
+          <button
+            onClick={() => { setTabMode('kelompok'); setSelectedCategory('Semua'); setSelectedGroup('Semua'); }}
+            className={`h-8 px-3 font-label-sm text-label-sm whitespace-nowrap transition-colors ${
+              tabMode === 'kelompok' ? 'bg-surface-container-high text-on-surface font-semibold' : 'text-on-surface-variant hover:bg-surface-container'
+            }`}
+          >
+            Kelompok
+          </button>
+        </div>
+        {(tabMode === 'kategori' ? categories : kelompokList).map((label) => (
+          <button
+            key={label}
+            onClick={() => (tabMode === 'kategori' ? setSelectedCategory(label) : setSelectedGroup(label))}
+            className={`h-8 px-4 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-colors ${
+              (tabMode === 'kategori' ? selectedCategory === label : selectedGroup === label)
+                ? 'bg-primary text-on-primary'
+                : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'
+            }`}
+          >
+            {label}
           </button>
         ))}
       </div>

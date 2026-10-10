@@ -86,7 +86,8 @@ export const productService = {
         *,
         mitra:mitra_id (full_name),
         category:category_id (name),
-        type:type_id (name)
+        type:type_id (name),
+        kelompok:group_id (name)
       `)
       .order('created_at', { ascending: false });
 
@@ -137,7 +138,8 @@ export const productService = {
         *,
         mitra:mitra_id (full_name),
         category:category_id (name),
-        type:type_id (name)
+        type:type_id (name),
+        kelompok:group_id (name)
       `)
       .is('deleted_at', null)
       .gt('stock', 0)
@@ -155,7 +157,8 @@ export const productService = {
         *,
         mitra:mitra_id (full_name),
         category:category_id (name),
-        type:type_id (name)
+        type:type_id (name),
+        kelompok:group_id (name)
       `)
       .is('deleted_at', null)
       .eq('stock', 0)
@@ -354,6 +357,49 @@ export const productTypeService = {
   async restore(id) {
     const { error } = await supabase
       .from('product_types')
+      .update({ deleted_at: null })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+};
+
+export const productGroupService = {
+  async getAll() {
+    const { data, error } = await supabase
+      .from('product_groups')
+      .select('*')
+      .is('deleted_at', null)
+      .order('name');
+
+    if (error) throw error;
+    return data || [];
+  },
+
+  async create(name) {
+    const { data, error } = await supabase
+      .from('product_groups')
+      .insert([{ name }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async delete(id) {
+    const { error } = await supabase
+      .from('product_groups')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', id)
+      .is('deleted_at', null);
+
+    if (error) throw error;
+  },
+
+  async restore(id) {
+    const { error } = await supabase
+      .from('product_groups')
       .update({ deleted_at: null })
       .eq('id', id);
 
