@@ -91,6 +91,12 @@ function App() {
     localStorage.removeItem('lapak-berkah-auth');
   };
 
+  // Profil diperbarui dari modal di TopAppBar. Effect
+  // sinkronisasi localStorage ikut menulis ulang sesi.
+  const handleUpdateProfile = (updatedUser) => {
+    setUser(updatedUser);
+  };
+
   useEffect(() => {
     if (!isAuthenticated) return;
 
@@ -172,7 +178,7 @@ function App() {
         </div>
       )}
       {!isPosDesktop && (
-        <TopAppBar title={isPos ? 'Halaman Kasir' : 'Lapak Berkah'} showNotifications={isPos} onLogout={handleLogout} />
+        <TopAppBar title={isPos ? 'Halaman Kasir' : 'Lapak Berkah'} showNotifications={isPos} onLogout={handleLogout} user={user} onUpdateProfile={handleUpdateProfile} />
       )}
       <div className={`flex overflow-hidden ${isPosDesktop ? 'h-screen' : 'h-[calc(100vh-64px)]'}`}>
         {!isPosDesktop && <NavDrawer activePage={page} onNavigate={navigateTo} onLogout={handleLogout} role={role} />}

@@ -53,6 +53,20 @@ export const userService = {
     return true;
   },
 
+  // Update profil sendiri (nama, foto, password opsional).
+  // Password lama diverifikasi pemanggil lewat authService.login
+  // sebelum RPC ini dipanggil.
+  async updateProfile(id, { nama, photo, password }) {
+    const { error } = await supabase.rpc('update_my_profile', {
+      p_id: id,
+      p_nama: nama,
+      p_photo: photo,
+      p_password: password || null,
+    });
+    if (error) throw error;
+    return true;
+  },
+
   async delete(id) {
     const { error } = await supabase.rpc('delete_user', { p_id: id });
     if (error) throw error;
