@@ -39,6 +39,8 @@ GRANT EXECUTE ON FUNCTION login_user(TEXT, TEXT) TO anon, authenticated;
 
 -- Update profil sendiri: nama, foto, dan password (opsional).
 -- Sengaja tidak menyentuh email maupun role.
+-- search_path WAJIB memuat "extensions": gen_salt dan crypt
+-- (pgcrypto) hidup di skema itu di Supabase, bukan di public.
 CREATE OR REPLACE FUNCTION update_my_profile(p_id UUID, p_nama TEXT, p_photo TEXT, p_password TEXT)
 RETURNS VOID AS $$
 BEGIN
@@ -52,7 +54,7 @@ BEGIN
       END
   WHERE id = p_id;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions, pg_temp;
 
 REVOKE ALL ON FUNCTION update_my_profile(UUID, TEXT, TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION update_my_profile(UUID, TEXT, TEXT, TEXT) TO anon, authenticated;
