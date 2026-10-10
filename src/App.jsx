@@ -18,9 +18,10 @@ import StockManagement from './pages/StockManagement';
 import MitraSettlement from './pages/MitraSettlement';
 import FinancialReports from './pages/FinancialReports';
 import AuditLog from './pages/AuditLog';
+import DimensionManagement from './pages/DimensionManagement';
 
 const rolePageAccess = {
-  admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement', 'audit-log', 'user-management'],
+  admin: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement', 'audit-log', 'user-management', 'dimension-management'],
   owner: ['dashboard', 'pos-desktop', 'inventory', 'mitra', 'sales-recap', 'transaction-history', 'product', 'financial', 'stock-management', 'mitra-settlement'],
   kasir: ['dashboard', 'pos-desktop', 'inventory', 'transaction-history', 'stock-management', 'mitra-settlement'],
   mitra: ['dashboard', 'mitra', 'sales-recap'],
@@ -197,6 +198,7 @@ function App() {
             {page === 'pos' && <KasirHP onNavigate={navigateTo} />}
             {page === 'pos-desktop' && <KasirDesktop onNavigate={navigateTo} />}
             {page === 'audit-log' && <AuditLog />}
+            {page === 'dimension-management' && <DimensionManagement />}
           </ErrorBoundary>
         </main>
         {page === 'pos-desktop' && <KasirDesktopCart user={user} isPosDesktop={isPosDesktop} />}

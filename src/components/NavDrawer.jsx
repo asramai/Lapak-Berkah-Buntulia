@@ -10,6 +10,7 @@ const navItems = [
   { icon: 'swap_vert', label: 'Manajemen Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'payments', label: 'Financial Reports', page: 'financial', roles: ['admin', 'owner'] },
   { icon: 'history_toggle_off', label: 'Audit Log', page: 'audit-log', roles: ['admin'] },
+  { icon: 'view_list', label: 'Manajemen Dimensi', page: 'dimension-management', roles: ['admin'] },
   { icon: 'manage_accounts', label: 'Manajemen Pengguna', page: 'user-management', roles: ['admin'] },
 ];
 

@@ -255,12 +255,16 @@ export const productService = {
 };
 
 export const categoryService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll({ includeDeleted = false } = {}) {
+    let query = supabase
       .from('categories')
       .select('*')
-      .is('deleted_at', null)
       .order('name');
+
+    if (includeDeleted) query = query.not('deleted_at', 'is', null);
+    else query = query.is('deleted_at', null);
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data || [];
@@ -310,12 +314,16 @@ export const categoryService = {
 };
 
 export const productTypeService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll({ includeDeleted = false } = {}) {
+    let query = supabase
       .from('product_types')
       .select('*')
-      .is('deleted_at', null)
       .order('name');
+
+    if (includeDeleted) query = query.not('deleted_at', 'is', null);
+    else query = query.is('deleted_at', null);
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data || [];
@@ -365,12 +373,16 @@ export const productTypeService = {
 };
 
 export const productGroupService = {
-  async getAll() {
-    const { data, error } = await supabase
+  async getAll({ includeDeleted = false } = {}) {
+    let query = supabase
       .from('product_groups')
       .select('*')
-      .is('deleted_at', null)
       .order('name');
+
+    if (includeDeleted) query = query.not('deleted_at', 'is', null);
+    else query = query.is('deleted_at', null);
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data || [];
