@@ -19,7 +19,11 @@
 ALTER TABLE users ADD COLUMN IF NOT EXISTS photo TEXT;
 
 -- login_user mengembalikan foto supaya avatar tampil setelah login.
-CREATE OR REPLACE FUNCTION login_user(p_email TEXT, p_password TEXT)
+-- Return type berubah (ditambah kolom photo), jadi fungsi lama
+-- harus didrop dulu; CREATE OR REPLACE tidak bisa mengubah
+-- tipe return fungsi yang sudah ada.
+DROP FUNCTION IF EXISTS login_user(TEXT, TEXT);
+CREATE FUNCTION login_user(p_email TEXT, p_password TEXT)
 RETURNS TABLE(id UUID, email TEXT, role TEXT, nama TEXT, photo TEXT) AS $$
 BEGIN
   RETURN QUERY
