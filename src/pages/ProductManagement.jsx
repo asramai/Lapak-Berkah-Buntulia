@@ -34,6 +34,20 @@ function ProductManagement() {
   const lowStock = useMemo(() => products.filter((p) => p.stock > 0 && p.stock <= 10).length, [products]);
   const outOfStock = useMemo(() => products.filter((p) => p.stock === 0).length, [products]);
 
+  // SKU berikutnya untuk form Tambah Produk: dihitung dari
+  // SKU aktif berformat LBB-### (LBB-128 → LBB-129).
+  const nextSku = useMemo(() => {
+    let max = 0;
+    for (const p of products) {
+      const match = /^LBB-(\d+)$/.exec(String(p.sku || '').trim().toUpperCase());
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > max) max = n;
+      }
+    }
+    return `LBB-${String(max + 1).padStart(3, '0')}`;
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const matchesSearch = product.nama_produk.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -182,7 +196,7 @@ function ProductManagement() {
       await loadCategories();
       await loadTypes();
       await loadMitra();
-    } catch {
+    } catch (error) {
       const detail = [error?.message, error?.details, error?.hint, error?.code].filter(Boolean).join(' | ') || 'Terjadi kesalahan saat menyimpan produk';
       showToast('Gagal menyimpan produk: ' + detail, 'error');
     }
@@ -244,7 +258,7 @@ function ProductManagement() {
   const resetForm = () => {
     setFormData({
       nama_produk: '',
-      sku: '',
+      sku: nextSku,
       category_id: '',
       type_id: '',
       mitra_id: '',
@@ -254,7 +268,7 @@ function ProductManagement() {
       unit: 'Pcs',
       photo: '',
       description: '',
-      barcode_id: '',
+      barcode_id: nextSku,
     });
     setEditingProduct(null);
   };
@@ -395,7 +409,7 @@ function ProductManagement() {
                       </div>
                     </div>
 
-                    {/* SKU */}
+                    {/* SKU - dibuat otomatis, tidak bisa diubah */}
                     <div className="space-y-2">
                       <label className="block font-label-md text-label-md text-on-surface font-medium" htmlFor="sku">
                         SKU <span className="text-error">*</span>
@@ -405,15 +419,17 @@ function ProductManagement() {
                           <span className="material-symbols-outlined text-[20px]">qr_code</span>
                         </div>
                         <input
-                          className="w-full h-12 pl-12 pr-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-body-md text-body-md text-on-background placeholder:text-outline/70"
+                          className="w-full h-12 pl-12 pr-4 rounded-xl border border-outline bg-surface-container-high text-on-surface-variant cursor-not-allowed font-body-md text-body-md"
                           id="sku"
                           type="text"
-                          placeholder="Contoh: BRP-001"
                           value={formData.sku}
-                          onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                          required
+                          disabled
+                          aria-describedby="sku-help"
                         />
                       </div>
+                      <p id="sku-help" className="text-xs text-on-surface-variant">
+                        Dibuat otomatis (format LBB-###). Tidak bisa diubah.
+                      </p>
                     </div>
 
                     {/* Kategori */}
@@ -579,25 +595,29 @@ function ProductManagement() {
                       </div>
                     </div>
 
-                     {/* Barcode ID */}
-                     <div className="space-y-2">
-                       <label className="block font-label-md text-label-md text-on-surface font-medium" htmlFor="barcode">
-                         Barcode ID
-                       </label>
-                       <div className="relative">
-                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
-                           <span className="material-symbols-outlined text-[20px]">barcode</span>
-                         </div>
-                         <input
-                           className="w-full h-12 pl-12 pr-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-body-md text-body-md text-on-background placeholder:text-outline/70"
-                           id="barcode"
-                           type="text"
-                           placeholder="Scan atau masukkan barcode"
-                           value={formData.barcode_id}
-                           onChange={(e) => setFormData({ ...formData, barcode_id: e.target.value })}
-                         />
-                       </div>
-                     </div>
+                      {/* Barcode ID - otomatis sama dengan SKU, bisa diubah */}
+                      <div className="space-y-2">
+                        <label className="block font-label-md text-label-md text-on-surface font-medium" htmlFor="barcode">
+                          Barcode ID
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-outline">
+                            <span className="material-symbols-outlined text-[20px]">barcode</span>
+                          </div>
+                          <input
+                            className="w-full h-12 pl-12 pr-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all font-body-md text-body-md text-on-background placeholder:text-outline/70"
+                            id="barcode"
+                            type="text"
+                            placeholder="Otomatis dari SKU"
+                            value={formData.barcode_id}
+                            onChange={(e) => setFormData({ ...formData, barcode_id: e.target.value })}
+                            aria-describedby="barcode-help"
+                          />
+                        </div>
+                        <p id="barcode-help" className="text-xs text-on-surface-variant">
+                          Otomatis sama dengan SKU. Ubah hanya kalau kode barcode fisik berbeda.
+                        </p>
+                      </div>
 
                      {/* Foto Produk */}
                      <div className="space-y-2">
