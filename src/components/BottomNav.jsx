@@ -9,7 +9,7 @@ const primaryItems = [
 const moreItems = [
   { icon: 'handshake', label: 'Mitra', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
   { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
-  { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin', 'owner'] },
+  { icon: 'assessment', label: 'Laporan', page: 'sales-recap', roles: ['admin', 'owner', 'mitra'] },
   { icon: 'history', label: 'Riwayat', page: 'transaction-history', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'swap_vert', label: 'Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'shopping_bag', label: 'Produk', page: 'product', roles: ['admin', 'owner'] },

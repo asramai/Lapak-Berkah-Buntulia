@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import { dashboardService, transactionService, productService } from '../lib/services';
+import { dashboardService, transactionService, productService, mitraService } from '../lib/services';
 
-function Dashboard({ setLowStockCount }) {
+function Dashboard({ setLowStockCount, user }) {
+  const isMitra = user?.role === 'mitra';
   const [stats, setStats] = useState({ totalTransactions: 0, totalSales: 0, totalItems: 0, activeMitra: 0 });
   const [todayTransactions, setTodayTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lowStockProducts, setLowStockProducts] = useState([]);
+  const [allMitra, setAllMitra] = useState([]);
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -15,8 +17,21 @@ function Dashboard({ setLowStockCount }) {
 
   const loadDashboardData = useCallback(async () => {
     try {
+      // Akun mitra diidentifikasi dari email yang cocok dengan
+      // data mitra, sama seperti Mitra Dashboard.
+      const mitraData = isMitra ? ((await mitraService.getAll()) || []) : [];
+      setAllMitra(mitraData);
+      let mitraId = null;
+      if (isMitra) {
+        const currentMitra = mitraData.find((m) => m.email === user?.email);
+        // Kalau akun belum cocok dengan data mitra, pakai id yang
+        // tidak mungkin ada supaya tidak ada data mitra lain yang
+        // tampil. Hubungi admin untuk menghubungkan akun.
+        mitraId = currentMitra ? String(currentMitra.id) : 'akun-mitra-belum-terhubung';
+      }
+
       const [statsData, transactionsData, lowStockData] = await Promise.all([
-        dashboardService.getTodayStats(),
+        dashboardService.getTodayStats(mitraId),
         transactionService.getHistory(),
         productService.getLowStock(10),
       ]);
@@ -33,27 +48,48 @@ function Dashboard({ setLowStockCount }) {
       setTodayTransactions(
         (transactionsData || [])
           .filter((t) => t.status === 'Selesai')
+          .filter((t) => {
+            if (!mitraId) return true;
+            return (t.items || []).some(
+              (item) => String(item.product?.mitra_id) === mitraId
+            );
+          })
           .slice(0, 10)
-          .map((t) => ({
-            id: t.id,
-            time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-            productName: t.items?.[0]?.product?.nama_produk || '-',
-            qty: t.items?.reduce((sum, item) => sum + item.quantity, 0) || 0,
-            total: t.total,
-            paymentMethod: t.metode_pembayaran || '-',
-            mitraName: t.mitra?.full_name || '-',
-          }))
+          .map((t) => {
+            // Untuk mitra, yang ditampilkan adalah item produk
+            // miliknya saja beserta totalnya, bukan total seluruh
+            // keranjang yang bisa berisi produk mitra lain.
+            const ownItems = mitraId
+              ? (t.items || []).filter((item) => String(item.product?.mitra_id) === mitraId)
+              : (t.items || []);
+            const ownTotal = ownItems.reduce(
+              (sum, item) => sum + (Number(item.harga_satuan) || 0) * (Number(item.quantity) || 0),
+              0
+            );
+            return {
+              id: t.id,
+              time: new Date(t.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+              productName: ownItems[0]?.product?.nama_produk || '-',
+              qty: ownItems.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+              total: mitraId ? ownTotal : t.total,
+              paymentMethod: t.metode_pembayaran || '-',
+              mitraName: t.mitra?.full_name || '-',
+            };
+          })
       );
-      setLowStockProducts(lowStockData);
+      const visibleLowStock = (lowStockData || []).filter(
+        (p) => !mitraId || String(p.mitra_id) === mitraId
+      );
+      setLowStockProducts(visibleLowStock);
       if (setLowStockCount) {
-        setLowStockCount(lowStockData.length);
+        setLowStockCount(visibleLowStock.length);
       }
     } catch {
       showToast('Gagal memuat data dashboard', 'error');
     } finally {
       setLoading(false);
     }
-  }, [setLowStockCount]);
+  }, [setLowStockCount, isMitra, user?.email]);
 
   useEffect(() => {
     loadDashboardData();
@@ -70,7 +106,7 @@ function Dashboard({ setLowStockCount }) {
             <div>
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard</h2>
               <p className="text-sm text-slate-500 mt-1">
-                Ringkasan transaksi hari ini
+                {isMitra ? 'Ringkasan transaksi hari ini untuk produk Anda' : 'Ringkasan transaksi hari ini'}
               </p>
             </div>
             <div className="text-right">
@@ -85,7 +121,9 @@ function Dashboard({ setLowStockCount }) {
           <div className="md:hidden flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-900 tracking-tight">Dashboard</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Ringkasan hari ini</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isMitra ? 'Ringkasan produk Anda' : 'Ringkasan hari ini'}
+              </p>
             </div>
             <div className="text-right">
               <div className="text-xs text-slate-500 font-medium">
@@ -140,10 +178,10 @@ function Dashboard({ setLowStockCount }) {
                 <div className="w-11 h-11 rounded-xl bg-[#d1f4e0] flex items-center justify-center text-[#0d592a]">
                   <span className="material-symbols-outlined">people</span>
                 </div>
-                <span className="text-xs text-[#0d592a] bg-[#d1f4e0]/50 px-2 py-1 rounded-full font-medium">Mitra</span>
+                <span className="text-xs text-[#0d592a] bg-[#d1f4e0]/50 px-2 py-1 rounded-full font-medium">{isMitra ? 'Produk' : 'Mitra'}</span>
               </div>
               <div>
-                <p className="text-xs font-medium text-slate-500 mb-1">Mitra Aktif</p>
+                <p className="text-xs font-medium text-slate-500 mb-1">{isMitra ? 'Produk Aktif' : 'Mitra Aktif'}</p>
                 <p className="text-2xl font-bold text-slate-900 tracking-tight">{loading ? '-' : stats.activeMitra}</p>
               </div>
             </div>
@@ -221,7 +259,9 @@ function Dashboard({ setLowStockCount }) {
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="p-6 border-b border-slate-200 bg-white">
               <h3 className="text-lg font-bold text-slate-900">Transaksi Hari Ini</h3>
-              <p className="text-xs text-slate-500 mt-0.5">Daftar transaksi yang terjadi hari ini</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isMitra ? 'Transaksi hari ini yang berisi produk Anda' : 'Daftar transaksi yang terjadi hari ini'}
+              </p>
             </div>
 
             {todayTransactions.length === 0 ? (

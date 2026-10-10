@@ -858,32 +858,47 @@ async create(validation) {
 export const dashboardService = {
   // Angka dashboard WAJIB lewat modul kalkulasi yang sama dengan laporan,
   // supaya tidak ada perbedaan omzet antara dashboard dan laporan.
-  async getTodayStats() {
+  //
+  // mitraId diisi untuk akun mitra: hanya penjualan produk milik
+  // mitra itu yang dihitung. Atribusi mengikuti mitra PRODUK, bukan
+  // mitra di header transaksi, supaya keranjang campur tetap benar.
+  async getTodayStats(mitraId = null) {
     // Tanggal lokal, bukan UTC. Dulu pakai toISOString() yang memakai tanggal
     // UTC, sehingga setelah pukul 00:00 WIB dashboard masih menampilkan
     // angka kemarin.
     const today = getLocalDate(new Date());
 
-    const [transactionData, returnData, productData, mitraCountResult] = await Promise.all([
+    const queries = [
       transactionService.getHistory(),
       returnService.getAll(),
       productService.getAll(),
-      supabase
-        .from('mitra')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Aktif')
-        .is('deleted_at', null),
-    ]);
+    ];
+    if (!mitraId) {
+      queries.push(
+        supabase
+          .from('mitra')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Aktif')
+          .is('deleted_at', null)
+      );
+    }
 
-    if (mitraCountResult.error) throw mitraCountResult.error;
+    const [transactionData, returnData, productData, mitraCountResult] = await Promise.all(queries);
 
-    const rows = buildProfitRows({
+    if (mitraCountResult?.error) throw mitraCountResult.error;
+
+    let rows = buildProfitRows({
       transactions: transactionData || [],
       returns: returnData || [],
       products: productData || [],
       startDate: today,
       endDate: today,
     });
+
+    if (mitraId) {
+      rows = rows.filter((row) => String(row.mitraId) === String(mitraId));
+    }
+
     const summary = summarizeProfit(rows);
 
     return {
@@ -893,7 +908,11 @@ export const dashboardService = {
       totalReturned: summary.totalRetur,
       untukMitra: summary.untukMitra,
       untukOwner: summary.untukOwner,
-      activeMitra: mitraCountResult.count || 0,
+      // Untuk akun mitra, kartu keempat menampilkan jumlah produk
+      // miliknya yang terdaftar, bukan jumlah mitra toko.
+      activeMitra: mitraId
+        ? (productData || []).filter((p) => String(p.mitra_id) === String(mitraId)).length
+        : (mitraCountResult.count || 0),
       date: today,
     };
   },

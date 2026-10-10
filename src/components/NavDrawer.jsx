@@ -4,7 +4,7 @@ const navItems = [
   { icon: 'inventory_2', label: 'Inventory', page: 'inventory', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'handshake', label: 'Mitra Dashboard', page: 'mitra', roles: ['admin', 'owner', 'mitra'] },
   { icon: 'receipt_long', label: 'Nota Penjualan Mitra', page: 'mitra-settlement', roles: ['admin', 'owner', 'kasir'] },
-  { icon: 'assessment', label: 'Laporan Penjualan', page: 'sales-recap', roles: ['admin', 'owner'] },
+  { icon: 'assessment', label: 'Laporan Penjualan', page: 'sales-recap', roles: ['admin', 'owner', 'mitra'] },
   { icon: 'history', label: 'Riwayat Transaksi', page: 'transaction-history', roles: ['admin', 'owner', 'kasir'] },
   { icon: 'inventory', label: 'Product Management', page: 'product', roles: ['admin', 'owner'] },
   { icon: 'swap_vert', label: 'Manajemen Stok', page: 'stock-management', roles: ['admin', 'owner', 'kasir'] },

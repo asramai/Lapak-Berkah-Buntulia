@@ -179,8 +179,8 @@ function App() {
         <main className={`flex-1 overflow-y-auto bg-surface pb-24 md:pb-8 ${isPosDesktop ? '' : 'md:ml-72'}`}>
           <ErrorBoundary>
             {page === 'financial' && <FinancialReports />}
-            {page === 'dashboard' && <Dashboard lowStockCount={lowStockCount} setLowStockCount={setLowStockCount} />}
-            {page === 'sales-recap' && <SalesRecap />}
+            {page === 'dashboard' && <Dashboard lowStockCount={lowStockCount} setLowStockCount={setLowStockCount} user={user} />}
+            {page === 'sales-recap' && <SalesRecap user={user} />}
             {page === 'mitra' && <MitraDashboard role={role} user={user} />}
             {page === 'inventory' && <Inventory />}
             {page === 'transaction-history' && <TransactionHistory user={user} />}

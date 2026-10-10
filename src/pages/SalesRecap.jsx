@@ -4,11 +4,13 @@ import { buildProfitRows, summarizeProfit, summarizeByMitra } from '../lib/profi
 import { ringkasanPembayaran } from '../lib/paymentGateway';
 import { downloadSpreadsheet, openPrintableReport } from '../lib/exportReport';
 
-function SalesRecap() {
+function SalesRecap({ user }) {
+  const isMitra = user?.role === 'mitra';
   const [transactions, setTransactions] = useState([]);
   const [returns, setReturns] = useState([]);
   const [products, setProducts] = useState([]);
   const [mitraList, setMitraList] = useState(['Semua Mitra']);
+  const [mitraData, setMitraData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -33,6 +35,7 @@ function SalesRecap() {
         setTransactions(txData || []);
         setReturns(returnData || []);
         setProducts(productData || []);
+        setMitraData(mitraData || []);
         setMitraList(['Semua Mitra', ...mitraData.map((m) => m.full_name)]);
       } catch {
         showToast('Gagal memuat data penjualan', 'error');
@@ -51,9 +54,31 @@ function SalesRecap() {
     [transactions, returns, products, startDate, endDate]
   );
 
+  // Akun mitra diidentifikasi dari email yang cocok dengan
+  // data mitra, sama seperti Mitra Dashboard.
+  const loggedInMitraId = useMemo(() => {
+    if (!isMitra || !user?.email) return null;
+    const currentMitra = mitraData.find((m) => m.email === user.email);
+    return currentMitra ? String(currentMitra.id) : null;
+  }, [isMitra, user?.email, mitraData]);
+
+  const loggedInMitraName = useMemo(() => {
+    if (!loggedInMitraId) return null;
+    return mitraData.find((m) => String(m.id) === loggedInMitraId)?.full_name || null;
+  }, [mitraData, loggedInMitraId]);
+
+  // Baris yang terlihat akun mitra: hanya produk miliknya.
+  // Kalau akun belum terhubung ke data mitra, tampilkan kosong
+  // supaya data mitra lain tidak bocor ke tampilan.
+  const scopedRows = useMemo(() => {
+    if (!isMitra) return profitRows;
+    if (!loggedInMitraId) return [];
+    return profitRows.filter((row) => String(row.mitraId) === loggedInMitraId);
+  }, [profitRows, isMitra, loggedInMitraId]);
+
   const filteredTransactions = useMemo(() => {
     const grouped = new Map();
-    profitRows.forEach((row) => {
+    scopedRows.forEach((row) => {
       if (selectedMitra !== 'Semua Mitra' && row.mitraName !== selectedMitra) return;
       const existing = grouped.get(row.transactionId) || {
         id: row.transactionId,
@@ -79,21 +104,21 @@ function SalesRecap() {
     return Array.from(grouped.values())
       .map((entry) => ({ ...entry, productName: entry.produk.join(', ') }))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [profitRows, selectedMitra]);
+  }, [scopedRows, selectedMitra]);
 
 const summary = useMemo(() => {
     const scoped = selectedMitra === 'Semua Mitra'
-      ? profitRows
-      : profitRows.filter((row) => row.mitraName === selectedMitra);
+      ? scopedRows
+      : scopedRows.filter((row) => row.mitraName === selectedMitra);
     return summarizeProfit(scoped);
-  }, [profitRows, selectedMitra]);
+  }, [scopedRows, selectedMitra]);
 
   const byMitra = useMemo(() => {
     const scoped = selectedMitra === 'Semua Mitra'
-      ? profitRows
-      : profitRows.filter((row) => row.mitraName === selectedMitra);
+      ? scopedRows
+      : scopedRows.filter((row) => row.mitraName === selectedMitra);
     return summarizeByMitra(scoped);
-  }, [profitRows, selectedMitra]);
+  }, [scopedRows, selectedMitra]);
 
   const rangeLabel = useMemo(() => {
     if (!startDate && !endDate) return 'Semua Periode';
@@ -223,7 +248,9 @@ heading: 'Pembagian Keuntungan',
             <div>
               <h2 className="font-display-lg text-display-lg text-on-background tracking-tight">Laporan Penjualan</h2>
               <p className="font-body-md text-body-md text-on-surface-variant mt-1">
-                Ringkasan penjualan dan rekap transaksi
+                {isMitra
+                  ? 'Ringkasan penjualan untuk produk mitra yang sedang login'
+                  : 'Ringkasan penjualan dan rekap transaksi'}
               </p>
             </div>
             <div className="flex gap-2">
@@ -414,15 +441,21 @@ heading: 'Pembagian Keuntungan',
               </div>
               <div className="flex-1">
                 <label className="block font-label-md text-label-md text-on-surface font-medium mb-2">Mitra</label>
-                <select
-                  className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md appearance-none"
-                  value={selectedMitra}
-                  onChange={(e) => setSelectedMitra(e.target.value)}
-                >
-                  {mitraList.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+                {isMitra ? (
+                  <div className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-high font-body-md text-body-md text-on-surface flex items-center">
+                    {loggedInMitraName || 'Mitra Anda'}
+                  </div>
+                ) : (
+                  <select
+                    className="w-full h-12 px-4 rounded-xl border border-outline bg-surface-container-low focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none font-body-md text-body-md appearance-none"
+                    value={selectedMitra}
+                    onChange={(e) => setSelectedMitra(e.target.value)}
+                  >
+                    {mitraList.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
           </div>
