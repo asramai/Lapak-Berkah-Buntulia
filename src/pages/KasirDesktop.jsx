@@ -34,7 +34,6 @@ function KasirDesktop({ onNavigate }) {
   const [selectedGroup, setSelectedGroup] = useState('Semua');
   // Dimensi tab di atas grid: kategori atau kelompok.
   const [tabMode, setTabMode] = useState('kategori');
-  const [barcode, setBarcode] = useState('');
   const [flash, setFlash] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [printerConnected, setPrinterConnected] = useState(false);
@@ -133,17 +132,26 @@ function KasirDesktop({ onNavigate }) {
     return products.filter((product) => selectedGroup === 'Semua' || product.kelompok?.name === selectedGroup);
   }, [products, tabMode, selectedCategory, selectedGroup]);
 
+  // Input barcode sengaja tidak dikontrol React (uncontrolled).
+  // Scanner barcode bekerja seperti keyboard: mengetik puluhan
+  // karakter secepat mungkin lalu menekan Enter. Kalau setiap
+  // karakter memicu state, seluruh halaman (termasuk grid produk
+  // yang besar) ikut render ulang per karakter, sehingga pada
+  // tablet murah scanner terasa lambat merespon. Dengan input
+  // tak terkontrol, React hanya render sekali saat Enter ditekan.
   const handleBarcodeSubmit = (e) => {
     e.preventDefault();
-    const trimmed = barcode.trim();
+    const trimmed = (barcodeRef.current?.value || '').trim();
     if (!trimmed) return;
     const product = products.find((p) => p.barcodeId === trimmed || p.sku === trimmed);
     if (product) {
       setFlash(product.id);
       setTimeout(() => setFlash(null), 600);
       window.dispatchEvent(new CustomEvent('kasir:add-product', { detail: { productId: product.id, product } }));
+    } else {
+      setPeringatanSnapshot(`Barcode/ID tidak ditemukan: ${trimmed}`);
     }
-    setBarcode('');
+    if (barcodeRef.current) barcodeRef.current.value = '';
     barcodeRef.current?.focus();
   };
 
@@ -189,11 +197,12 @@ function KasirDesktop({ onNavigate }) {
               <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">barcode_scanner</span>
               <input
                 ref={barcodeRef}
+                autoFocus
+                aria-label="Scan barcode atau ketik SKU/Barcode ID"
                 className={`w-full h-10 pl-10 pr-4 rounded-xl border-2 bg-surface-container-lowest font-body-md text-body-md outline-none transition-colors ${flash ? 'border-primary' : 'border-outline-variant focus:border-primary focus:ring-0'}`}
                 placeholder="Scan barcode atau ketik SKU/Barcode ID..."
                 type="text"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
+                defaultValue=""
               />
             </div>
           </form>
